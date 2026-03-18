@@ -1049,6 +1049,87 @@ main {
   font-family: var(--mono); letter-spacing: 0.5px;
 }
 
+/* MOD BULK BAR */
+.mod-bulk-bar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 20px; margin-bottom: 16px;
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: 14px; flex-wrap: wrap;
+}
+.mod-bulk-bar .bulk-select-all {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.72rem; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 1.5px;
+  font-weight: 500; cursor: pointer;
+}
+.mod-bulk-bar .bulk-select-all input[type="checkbox"] {
+  accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer;
+}
+.mod-bulk-count {
+  font-family: var(--mono); font-size: 0.72rem;
+  color: var(--text-dim); letter-spacing: 0.5px; margin-left: auto;
+}
+.mod-bulk-actions {
+  display: flex; gap: 6px; flex-wrap: wrap;
+}
+
+/* MOD USER CHECKBOX */
+.mod-user-check {
+  width: 16px; height: 16px; accent-color: var(--accent);
+  cursor: pointer; flex-shrink: 0;
+}
+
+/* MOD USER EXPANDED ACTIONS */
+.mod-user-actions-expanded {
+  display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+}
+
+/* MOD ROLE SELECT */
+.mod-role-select {
+  padding: 4px 10px; border-radius: 8px;
+  background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border);
+  color: var(--text-muted); font-family: var(--sans);
+  font-size: 0.68rem; font-weight: 500; letter-spacing: 0.5px;
+  cursor: pointer; outline: none; appearance: none;
+  -webkit-appearance: none;
+}
+.mod-role-select option { background: #1a1918; color: var(--text); }
+.mod-role-select:focus { border-color: var(--border-light); }
+
+/* MOD SEARCH */
+.mod-search-bar {
+  width: 100%; padding: 10px 16px 10px 38px;
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: 12px; color: var(--text);
+  font-family: var(--sans); font-size: 0.82rem;
+  outline: none; transition: all 0.3s; margin-bottom: 16px;
+}
+.mod-search-bar::placeholder { color: var(--text-dim); }
+.mod-search-bar:focus {
+  border-color: var(--border-light); background: var(--glass-bg-hover);
+}
+.mod-search-wrap { position: relative; }
+.mod-search-wrap svg {
+  position: absolute; left: 12px; top: 50%;
+  transform: translateY(-50%); width: 14px; height: 14px;
+  color: var(--text-dim); pointer-events: none;
+}
+
+/* MOD USER DETAIL ROW */
+.mod-user-row-expanded {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 20px; border-radius: 14px;
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  margin-bottom: 8px; transition: all 0.3s; flex-wrap: wrap;
+}
+.mod-user-row-expanded:hover {
+  background: var(--glass-bg-hover); border-color: var(--border-light);
+}
+.mod-user-row-expanded.selected {
+  border-color: rgba(122,172,138,0.3);
+  background: rgba(122,172,138,0.04);
+}
+
 /* TOAST */
 .toast {
   position: fixed; bottom: 70px; left: 50%;
@@ -1286,6 +1367,8 @@ const USER_ROLES = {
   'admin@reviewboard.com': 'admin',
   'mod@reviewboard.com': 'moderator',
   'curator@reviewboard.com': 'curator',
+  'benny.f208@gmail.com': 'admin',
+  'artmostaghim@gmail.com': 'curator',
   // Add more: 'email@example.com': 'admin' | 'moderator' | 'curator'
 };
 
@@ -1308,7 +1391,7 @@ const PRE_VERIFIED_EMAILS = [
 const BLOCKED_DOMAINS = [
   'tempmail.com', 'throwaway.email', 'guerrillamail.com',
   'mailinator.com', 'yopmail.com', 'sharklasers.com',
-  'trashmail.com', 'fakeinbox.com',
+  'trashmail.com', 'students.igssyd.nsw.edu.au',
 ];
 
 // 4. DEFAULT AVATARS BY ROLE — color for initials circle
@@ -1352,9 +1435,9 @@ const REQUIRE_VERIFICATION = true;
 // Sign up at https://www.emailjs.com and fill in these values.
 // Create a template with variables: {{to_email}}, {{to_name}}, {{verification_code}}, {{site_name}}
 const EMAILJS_CONFIG = {
-  publicKey: 'gMS-Uk3Qfkl-Jl_GH',        // From EmailJS Account > API Keys
-  serviceId: 'service_thereviewboard',        // From EmailJS Email Services
-  templateId: 'template_m2xse8y',      // From EmailJS Email Templates
+  publicKey: 'YOUR_PUBLIC_KEY',        // From EmailJS Account > API Keys
+  serviceId: 'YOUR_SERVICE_ID',        // From EmailJS Email Services
+  templateId: 'YOUR_TEMPLATE_ID',      // From EmailJS Email Templates
 };
 
 /* ============================================ */
@@ -1393,6 +1476,8 @@ let searchQuery = '';
 let selectedRating = 0;
 let editingReviewId = null;
 let modTab = 'reviews';
+let modUserSearch = '';
+let selectedUserIds = new Set();
 let nextId = reviews.length ? Math.max(...reviews.map(r => r.id)) + 1 : 1;
 
 function saveReviews() { localStorage.setItem('rb_reviews', JSON.stringify(reviews)); }
@@ -1668,7 +1753,7 @@ function showVerificationModal(code) {
     if (sent) {
       statusEl.innerHTML = `<p style="font-size:0.82rem;color:var(--accent);">✓ Code sent to <strong>${esc(currentUser.email)}</strong></p>`;
     } else {
-      statusEl.innerHTML = `<p style="font-size:0.82rem;color:var(--warm);">Could not send email. Your code is: <span class="verify-code-display" style="display:inline-block;margin-top:8px;">${esc(code)}</span></p>`;
+      statusEl.innerHTML = `<p style="font-size:0.82rem;color:var(--warm);">Could not send email. Please check your EmailJS configuration.</p>`;
     }
   });
 }
@@ -1784,7 +1869,7 @@ function resendVerificationCode() {
     if (sent) {
       statusEl.innerHTML = `<p style="font-size:0.82rem;color:var(--accent);">✓ New code sent to <strong>${esc(currentUser.email)}</strong></p>`;
     } else {
-      statusEl.innerHTML = `<p style="font-size:0.82rem;color:var(--warm);">Could not send email. Your code is: <span class="verify-code-display" style="display:inline-block;margin-top:8px;">${esc(newCode)}</span></p>`;
+      statusEl.innerHTML = `<p style="font-size:0.82rem;color:var(--warm);">Could not send email. Please check your EmailJS configuration.</p>`;
     }
   });
 }
@@ -2360,7 +2445,44 @@ function renderModPanel() {
       tabContent.innerHTML = '<div class="empty-state"><h3>No users registered</h3></div>';
       return;
     }
-    tabContent.innerHTML = users.map(u => {
+
+    // Filter users by search
+    let filteredUsers = users;
+    if (modUserSearch) {
+      const q = modUserSearch.toLowerCase();
+      filteredUsers = users.filter(u =>
+        u.username.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q) ||
+        getUserRole(u).includes(q)
+      );
+    }
+
+    const allFilteredIds = filteredUsers.map(u => u.id);
+    const allSelected = filteredUsers.length > 0 && filteredUsers.every(u => selectedUserIds.has(u.id));
+    const someSelected = selectedUserIds.size > 0;
+
+    let bulkBarHTML = `
+      <div class="mod-search-wrap">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" class="mod-search-bar" id="mod-user-search" placeholder="Search users by name, email, or role..." value="${esc(modUserSearch)}">
+      </div>
+      <div class="mod-bulk-bar">
+        <label class="bulk-select-all">
+          <input type="checkbox" id="mod-select-all" ${allSelected ? 'checked' : ''} onchange="modToggleSelectAll(this.checked)">
+          Select All
+        </label>
+        <span class="mod-bulk-count">${selectedUserIds.size} selected</span>
+        <div class="mod-bulk-actions">
+          <button class="mod-action-btn danger" onclick="modBulkBan()" ${!someSelected ? 'disabled style="opacity:0.3;pointer-events:none;"' : ''}>Ban Selected</button>
+          <button class="mod-action-btn success" onclick="modBulkUnban()" ${!someSelected ? 'disabled style="opacity:0.3;pointer-events:none;"' : ''}>Unban Selected</button>
+          <button class="mod-action-btn success" onclick="modBulkVerify()" ${!someSelected ? 'disabled style="opacity:0.3;pointer-events:none;"' : ''}>Verify Selected</button>
+          <button class="mod-action-btn danger" onclick="modBulkDeleteReviews()" ${!someSelected ? 'disabled style="opacity:0.3;pointer-events:none;"' : ''}>Del All Reviews</button>
+          <button class="mod-action-btn danger" onclick="modBulkDeleteUsers()" ${!someSelected ? 'disabled style="opacity:0.3;pointer-events:none;"' : ''}>Delete Users</button>
+        </div>
+      </div>
+    `;
+
+    const userRowsHTML = filteredUsers.map(u => {
       const avatar = u.avatar
         ? `<img src="${esc(u.avatar)}" alt="">`
         : `<span style="color:${getDefaultAvatarColor(u)}">${getInitials(u.username)}</span>`;
@@ -2373,25 +2495,45 @@ function renderModPanel() {
       else tags.push('<span class="verified-tag">✓</span>');
       const userReviewCount = reviews.filter(r => r.authorId === u.id && !r.deleted).length;
       const userRole = getUserRole(u);
+      const isSelected = selectedUserIds.has(u.id);
+      const isSelf = u.id === currentUser.id;
+
+      // Role select dropdown
+      const roleOptions = ['user', 'curator', 'moderator', 'admin'].map(r =>
+        `<option value="${r}" ${userRole === r ? 'selected' : ''}>${r.charAt(0).toUpperCase() + r.slice(1)}</option>`
+      ).join('');
 
       return `
-      <div class="mod-user-row">
+      <div class="mod-user-row-expanded ${isSelected ? 'selected' : ''}">
+        <input type="checkbox" class="mod-user-check" ${isSelected ? 'checked' : ''} onchange="modToggleUserSelect('${u.id}', this.checked)" ${isSelf ? 'disabled style="opacity:0.2;"' : ''}>
         <div class="mod-user-avatar">${avatar}</div>
         <div class="mod-user-info">
           <div class="mod-user-name">${esc(u.username)} ${tags.join(' ')}</div>
           <div class="mod-user-email">${esc(u.email)}</div>
-          <div class="mod-user-meta">${userReviewCount} reviews · Role: ${userRole} · Joined ${u.joined || 'Unknown'}</div>
+          <div class="mod-user-meta">${userReviewCount} reviews · Joined ${u.joined || 'Unknown'}</div>
         </div>
-        <div class="mod-actions">
-          ${u.id !== currentUser.id ? `
+        <div class="mod-user-actions-expanded">
+          ${!isSelf ? `
+            <select class="mod-role-select" onchange="modChangeRole('${u.id}', this.value)">${roleOptions}</select>
+            ${!isVerified(u) ? `<button class="mod-action-btn success" onclick="modForceVerify('${u.id}')">Verify</button>` : ''}
+            <button class="mod-action-btn" onclick="modResetPassword('${u.id}')">Reset PW</button>
             <button class="mod-action-btn ${u.banned ? 'success' : 'danger'}" onclick="modToggleBan('${u.id}')">
               ${u.banned ? 'Unban' : 'Ban'}
             </button>
             <button class="mod-action-btn danger" onclick="modDeleteUserReviews('${u.id}')">Del Reviews</button>
+            <button class="mod-action-btn danger" onclick="modDeleteUser('${u.id}')">Delete</button>
           ` : '<span style="font-size:0.68rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px;">You</span>'}
         </div>
       </div>`;
     }).join('');
+
+    tabContent.innerHTML = bulkBarHTML + userRowsHTML;
+
+    // Bind search input
+    document.getElementById('mod-user-search').addEventListener('input', e => {
+      modUserSearch = e.target.value;
+      renderModPanel();
+    });
   }
 }
 
@@ -2469,6 +2611,168 @@ function modDeleteUserReviews(userId) {
   saveReviews();
   renderAll();
   showToast('All Reviews Deleted');
+}
+
+/* ============================================ */
+/* INDIVIDUAL MOD ACTIONS                       */
+/* ============================================ */
+function modChangeRole(userId, newRole) {
+  const u = users.find(x => x.id === userId);
+  if (!u) return;
+  const email = u.email.toLowerCase();
+  if (newRole === 'user') {
+    delete USER_ROLES[email];
+  } else {
+    USER_ROLES[email] = newRole;
+  }
+  renderAll();
+  showToast(esc(u.username) + ' → ' + newRole.charAt(0).toUpperCase() + newRole.slice(1));
+}
+
+function modForceVerify(userId) {
+  const userIdx = users.findIndex(u => u.id === userId);
+  if (userIdx === -1) return;
+  users[userIdx].verified = true;
+  users[userIdx].verificationCode = null;
+  saveUsers();
+  if (currentUser && currentUser.id === userId) {
+    currentUser = { ...users[userIdx] };
+    saveSession();
+  }
+  renderAll();
+  showToast(esc(users[userIdx].username) + ' Verified');
+}
+
+function modResetPassword(userId) {
+  const userIdx = users.findIndex(u => u.id === userId);
+  if (userIdx === -1) return;
+  const newPass = 'reset' + Math.random().toString(36).slice(2, 8);
+  users[userIdx].passwordHash = simpleHash(newPass);
+  saveUsers();
+  showToast('Password reset to: ' + newPass);
+}
+
+function modDeleteUser(userId) {
+  if (userId === currentUser.id) return;
+  const u = users.find(x => x.id === userId);
+  if (!u) return;
+  const name = u.username;
+  // Remove all their reviews
+  reviews.forEach(r => { if (r.authorId === userId) r.deleted = true; });
+  saveReviews();
+  // Remove the user
+  users = users.filter(x => x.id !== userId);
+  saveUsers();
+  selectedUserIds.delete(userId);
+  renderAll();
+  showToast(esc(name) + ' Deleted');
+}
+
+/* ============================================ */
+/* BULK SELECT & ACTIONS                        */
+/* ============================================ */
+function modToggleUserSelect(userId, checked) {
+  if (checked) {
+    selectedUserIds.add(userId);
+  } else {
+    selectedUserIds.delete(userId);
+  }
+  renderModPanel();
+}
+
+function modToggleSelectAll(checked) {
+  let filteredUsers = users;
+  if (modUserSearch) {
+    const q = modUserSearch.toLowerCase();
+    filteredUsers = users.filter(u =>
+      u.username.toLowerCase().includes(q) ||
+      u.email.toLowerCase().includes(q) ||
+      getUserRole(u).includes(q)
+    );
+  }
+  if (checked) {
+    filteredUsers.forEach(u => { if (u.id !== currentUser.id) selectedUserIds.add(u.id); });
+  } else {
+    selectedUserIds.clear();
+  }
+  renderModPanel();
+}
+
+function modBulkBan() {
+  if (!selectedUserIds.size) return;
+  let count = 0;
+  selectedUserIds.forEach(id => {
+    const u = users.find(x => x.id === id);
+    if (u && u.id !== currentUser.id && !u.banned) {
+      u.banned = true; count++;
+    }
+  });
+  saveUsers();
+  selectedUserIds.clear();
+  renderAll();
+  showToast(count + ' user' + (count !== 1 ? 's' : '') + ' banned');
+}
+
+function modBulkUnban() {
+  if (!selectedUserIds.size) return;
+  let count = 0;
+  selectedUserIds.forEach(id => {
+    const u = users.find(x => x.id === id);
+    if (u && u.banned) { u.banned = false; count++; }
+  });
+  saveUsers();
+  selectedUserIds.clear();
+  renderAll();
+  showToast(count + ' user' + (count !== 1 ? 's' : '') + ' unbanned');
+}
+
+function modBulkVerify() {
+  if (!selectedUserIds.size) return;
+  let count = 0;
+  selectedUserIds.forEach(id => {
+    const u = users.find(x => x.id === id);
+    if (u && !isVerified(u)) {
+      u.verified = true; u.verificationCode = null; count++;
+    }
+  });
+  saveUsers();
+  if (currentUser) {
+    const fresh = users.find(u => u.id === currentUser.id);
+    if (fresh) { currentUser = { ...fresh }; saveSession(); }
+  }
+  selectedUserIds.clear();
+  renderAll();
+  showToast(count + ' user' + (count !== 1 ? 's' : '') + ' verified');
+}
+
+function modBulkDeleteReviews() {
+  if (!selectedUserIds.size) return;
+  let count = 0;
+  selectedUserIds.forEach(id => {
+    reviews.forEach(r => {
+      if (r.authorId === id && !r.deleted) { r.deleted = true; count++; }
+    });
+  });
+  saveReviews();
+  selectedUserIds.clear();
+  renderAll();
+  showToast(count + ' review' + (count !== 1 ? 's' : '') + ' deleted');
+}
+
+function modBulkDeleteUsers() {
+  if (!selectedUserIds.size) return;
+  const toDelete = [...selectedUserIds].filter(id => id !== currentUser.id);
+  let count = 0;
+  toDelete.forEach(id => {
+    reviews.forEach(r => { if (r.authorId === id) r.deleted = true; });
+    count++;
+  });
+  saveReviews();
+  users = users.filter(u => !toDelete.includes(u.id));
+  saveUsers();
+  selectedUserIds.clear();
+  renderAll();
+  showToast(count + ' user' + (count !== 1 ? 's' : '') + ' deleted');
 }
 
 /* ============================================ */
