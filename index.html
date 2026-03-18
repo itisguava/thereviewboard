@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>The ReviewBoard</title>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <style>
 :root {
   --bg: #0c0b0a;
@@ -955,6 +957,98 @@ main {
   box-shadow: 0 8px 32px rgba(122,172,138,0.2), inset 0 1px 0 rgba(255,255,255,0.15);
 }
 
+/* ROLE BADGES */
+.role-badge {
+  font-family: var(--mono); font-size: 0.58rem;
+  text-transform: uppercase; letter-spacing: 1.5px;
+  padding: 2px 8px; border-radius: 6px;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.role-admin {
+  background: rgba(196,160,106,0.12); color: var(--warm);
+  border: 1px solid rgba(196,160,106,0.2);
+}
+.role-moderator {
+  background: var(--mod-glow); color: var(--mod-color);
+  border: 1px solid rgba(168,156,196,0.2);
+}
+.role-curator {
+  background: rgba(138,180,196,0.12); color: #8ab4c4;
+  border: 1px solid rgba(138,180,196,0.2);
+}
+
+/* ACTIVITY BADGES */
+.activity-badge {
+  font-family: var(--mono); font-size: 0.54rem;
+  text-transform: uppercase; letter-spacing: 1.5px;
+  padding: 2px 8px; border-radius: 6px;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.badge-newcomer {
+  background: rgba(122,172,138,0.08); color: var(--accent);
+  border: 1px solid rgba(122,172,138,0.15);
+}
+.badge-contributor {
+  background: rgba(138,180,196,0.1); color: #8ab4c4;
+  border: 1px solid rgba(138,180,196,0.15);
+}
+.badge-expert {
+  background: rgba(196,160,106,0.1); color: var(--warm);
+  border: 1px solid rgba(196,160,106,0.15);
+}
+.badge-legend {
+  background: rgba(196,106,106,0.1); color: #e8a87c;
+  border: 1px solid rgba(196,106,106,0.15);
+}
+
+/* VERIFICATION */
+.verify-notice {
+  text-align: center; padding: 40px 20px;
+  background: rgba(196,160,106,0.06);
+  border: 1px solid rgba(196,160,106,0.15);
+  border-radius: 16px; max-width: 500px; margin: 0 auto 24px;
+}
+.verify-notice h3 {
+  font-family: var(--serif); font-size: 1.2rem;
+  font-weight: 400; margin-bottom: 8px; color: var(--warm);
+}
+.verify-notice p { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 16px; }
+.verify-code-input {
+  width: 180px; padding: 12px 16px; text-align: center;
+  background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border);
+  border-radius: 10px; color: var(--text); font-family: var(--mono);
+  font-size: 1.4rem; letter-spacing: 8px; outline: none;
+  transition: border-color 0.3s;
+}
+.verify-code-input:focus { border-color: var(--warm); }
+.verify-code-display {
+  font-family: var(--mono); font-size: 2rem; letter-spacing: 8px;
+  color: var(--warm); margin: 16px 0;
+  padding: 12px 24px; background: rgba(196,160,106,0.06);
+  border: 1px solid rgba(196,160,106,0.15); border-radius: 10px;
+  display: inline-block;
+}
+.unverified-tag {
+  font-family: var(--mono); font-size: 0.54rem;
+  text-transform: uppercase; letter-spacing: 1.5px;
+  padding: 2px 8px; border-radius: 6px;
+  background: rgba(196,160,106,0.1); color: var(--warm);
+  border: 1px solid rgba(196,160,106,0.2);
+}
+.verified-tag {
+  font-family: var(--mono); font-size: 0.54rem;
+  text-transform: uppercase; letter-spacing: 1.5px;
+  padding: 2px 8px; border-radius: 6px;
+  background: rgba(122,172,138,0.1); color: var(--accent);
+  border: 1px solid rgba(122,172,138,0.15);
+}
+
+/* RATE LIMIT */
+.rate-limit-notice {
+  font-size: 0.78rem; color: var(--warm); margin-top: 12px;
+  font-family: var(--mono); letter-spacing: 0.5px;
+}
+
 /* TOAST */
 .toast {
   position: fixed; bottom: 70px; left: 50%;
@@ -1160,17 +1254,108 @@ main {
   </div>
 </div>
 
+<!-- Email Verification Modal -->
+<div class="modal-overlay" id="verify-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('verify-modal')">&times;</button>
+    <h2>Verify Your <em>Email</em></h2>
+    <p class="subtitle">We sent a 6-digit code to your email address.</p>
+    <div id="verify-status" style="text-align:center;margin-bottom:20px;">
+      <p style="font-size:0.82rem;color:var(--text-muted);">Check your inbox for the verification code.</p>
+    </div>
+    <div class="form-group">
+      <label>Verification Code</label>
+      <input type="text" id="verify-code-input" placeholder="000000" maxlength="6" style="width:100%;text-align:center;font-size:1.4rem;letter-spacing:8px;font-family:var(--mono);padding:14px 0;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);outline:none;transition:border-color 0.3s;" onfocus="this.style.borderColor='var(--warm)'" onblur="this.style.borderColor='var(--border)'">
+      <div class="form-error" id="verify-error"></div>
+    </div>
+    <button class="submit-btn" onclick="handleVerifyEmail()">Verify Email</button>
+    <div class="switch-text" style="margin-top:16px;">
+      <a onclick="resendVerificationCode()" id="resend-link">Resend code</a> · <a onclick="closeModal('verify-modal')">Skip for now</a>
+    </div>
+    <div id="resend-status" style="font-size:0.72rem;color:var(--text-dim);text-align:center;margin-top:8px;"></div>
+  </div>
+</div>
+
 <script>
 /* ============================================ */
-/* CONFIGURATION — Set moderator emails here    */
+/* CONFIGURATION                                */
 /* ============================================ */
-const MODERATOR_EMAILS = [
+
+// 1. ROLE TIERS — assign roles by email
+const USER_ROLES = {
+  'admin@reviewboard.com': 'admin',
+  'mod@reviewboard.com': 'moderator',
+  'curator@reviewboard.com': 'curator',
+  // Add more: 'email@example.com': 'admin' | 'moderator' | 'curator'
+};
+
+const ROLE_HIERARCHY = { admin: 3, moderator: 2, curator: 1, user: 0 };
+
+const ROLE_COLORS = {
+  admin: { bg: 'rgba(196,160,106,0.12)', color: '#c4a06a', border: 'rgba(196,160,106,0.25)', label: 'Admin', icon: '⚡' },
+  moderator: { bg: 'rgba(168,156,196,0.12)', color: '#a89cc4', border: 'rgba(168,156,196,0.25)', label: 'Mod', icon: '🛡' },
+  curator: { bg: 'rgba(138,180,196,0.12)', color: '#8ab4c4', border: 'rgba(138,180,196,0.25)', label: 'Curator', icon: '✦' },
+};
+
+// 2. PRE-VERIFIED EMAILS — skip verification
+const PRE_VERIFIED_EMAILS = [
   'admin@reviewboard.com',
   'mod@reviewboard.com',
-  'benny.f208@gmail.com',
-  'artmostaghim@gmail.com',
-  // Add emails here to grant moderator access
+  'curator@reviewboard.com',
 ];
+
+// 3. BANNED EMAIL DOMAINS — block throwaway providers
+const BLOCKED_DOMAINS = [
+  'tempmail.com', 'throwaway.email', 'guerrillamail.com',
+  'mailinator.com', 'yopmail.com', 'sharklasers.com',
+  'trashmail.com', 'fakeinbox.com',
+];
+
+// 4. DEFAULT AVATARS BY ROLE — color for initials circle
+const DEFAULT_AVATAR_COLORS = {
+  admin: '#c4a06a',
+  moderator: '#a89cc4',
+  curator: '#8ab4c4',
+  user: '#7aac8a',
+};
+
+// 5. INVITE-ONLY MODE
+const INVITE_ONLY = false; // Set to true to restrict registration
+const ALLOWED_EMAILS = [
+  // Only these emails can register when INVITE_ONLY is true
+  'admin@reviewboard.com',
+  'mod@reviewboard.com',
+  'invited@example.com',
+];
+
+// 6. REVIEW RATE LIMITS (reviews per 24 hours)
+const REVIEW_LIMITS = {
+  admin: 999,
+  moderator: 50,
+  curator: 20,
+  user: 5,
+  unverified: 1,
+};
+
+// 7. AUTO-ASSIGN BADGES (based on activity)
+const BADGE_THRESHOLDS = [
+  { key: 'newcomer', label: 'Newcomer', cls: 'badge-newcomer', icon: '🌱', minReviews: 0, minHelpful: 0 },
+  { key: 'contributor', label: 'Contributor', cls: 'badge-contributor', icon: '✍', minReviews: 5, minHelpful: 10 },
+  { key: 'expert', label: 'Expert', cls: 'badge-expert', icon: '🏆', minReviews: 15, minHelpful: 50 },
+  { key: 'legend', label: 'Legend', cls: 'badge-legend', icon: '🔥', minReviews: 30, minHelpful: 100 },
+];
+
+// 8. EMAIL VERIFICATION — enabled/disabled
+const REQUIRE_VERIFICATION = true;
+
+// 9. EMAILJS CONFIGURATION
+// Sign up at https://www.emailjs.com and fill in these values.
+// Create a template with variables: {{to_email}}, {{to_name}}, {{verification_code}}, {{site_name}}
+const EMAILJS_CONFIG = {
+  publicKey: 'gMS-Uk3Qfkl-Jl_GH',        // From EmailJS Account > API Keys
+  serviceId: 'service_thereviewboard',        // From EmailJS Email Services
+  templateId: 'template_m2xse8y',      // From EmailJS Email Templates
+};
 
 /* ============================================ */
 /* DATA                                         */
@@ -1234,7 +1419,81 @@ function timeAgo(dateStr) {
 }
 
 function isMod(user) {
-  return user && MODERATOR_EMAILS.includes(user.email.toLowerCase());
+  if (!user) return false;
+  const role = getUserRole(user);
+  return ROLE_HIERARCHY[role] >= ROLE_HIERARCHY['moderator'];
+}
+
+function getUserRole(user) {
+  if (!user) return 'user';
+  return USER_ROLES[user.email.toLowerCase()] || 'user';
+}
+
+function hasRole(user, minRole) {
+  return ROLE_HIERARCHY[getUserRole(user)] >= ROLE_HIERARCHY[minRole];
+}
+
+function getRoleBadgeHTML(user) {
+  const role = getUserRole(user);
+  const info = ROLE_COLORS[role];
+  if (!info) return '';
+  return `<span class="role-badge role-${role}">${info.icon} ${info.label}</span>`;
+}
+
+function getDefaultAvatarColor(user) {
+  const role = getUserRole(user);
+  return DEFAULT_AVATAR_COLORS[role] || DEFAULT_AVATAR_COLORS.user;
+}
+
+function getUserActivityBadge(user) {
+  if (!user) return null;
+  const userReviews = reviews.filter(r => r.authorId === user.id && !r.deleted);
+  const totalHelpful = userReviews.reduce((s, r) => s + (r.helpful || 0), 0);
+  let best = BADGE_THRESHOLDS[0];
+  for (const b of BADGE_THRESHOLDS) {
+    if (userReviews.length >= b.minReviews && totalHelpful >= b.minHelpful) best = b;
+  }
+  return best;
+}
+
+function getActivityBadgeHTML(user) {
+  const badge = getUserActivityBadge(user);
+  if (!badge) return '';
+  return `<span class="activity-badge ${badge.cls}">${badge.icon} ${badge.label}</span>`;
+}
+
+function isVerified(user) {
+  if (!user) return false;
+  if (PRE_VERIFIED_EMAILS.includes(user.email.toLowerCase())) return true;
+  return !!user.verified;
+}
+
+function canWriteReview(user) {
+  if (!user || user.banned) return false;
+  if (REQUIRE_VERIFICATION && !isVerified(user)) return false;
+  const role = getUserRole(user);
+  const limit = isVerified(user) ? (REVIEW_LIMITS[role] || REVIEW_LIMITS.user) : REVIEW_LIMITS.unverified;
+  const today = new Date().toISOString().slice(0, 10);
+  const todayCount = reviews.filter(r => r.authorId === user.id && r.date === today && !r.deleted).length;
+  return todayCount < limit;
+}
+
+function getReviewsRemaining(user) {
+  if (!user) return 0;
+  const role = getUserRole(user);
+  const limit = isVerified(user) ? (REVIEW_LIMITS[role] || REVIEW_LIMITS.user) : REVIEW_LIMITS.unverified;
+  const today = new Date().toISOString().slice(0, 10);
+  const todayCount = reviews.filter(r => r.authorId === user.id && r.date === today && !r.deleted).length;
+  return Math.max(0, limit - todayCount);
+}
+
+function generateVerificationCode() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+function isBlockedDomain(email) {
+  const domain = email.split('@')[1]?.toLowerCase();
+  return BLOCKED_DOMAINS.includes(domain);
 }
 
 function isBanned(user) {
@@ -1296,6 +1555,14 @@ function handleRegister() {
     errEl.textContent = 'Enter a valid email address.';
     errEl.style.display = 'block'; return;
   }
+  if (isBlockedDomain(email)) {
+    errEl.textContent = 'This email domain is not allowed.';
+    errEl.style.display = 'block'; return;
+  }
+  if (INVITE_ONLY && !ALLOWED_EMAILS.includes(email)) {
+    errEl.textContent = 'Registration is invite-only. Your email is not on the list.';
+    errEl.style.display = 'block'; return;
+  }
   if (password.length < 6) {
     errEl.textContent = 'Password must be at least 6 characters.';
     errEl.style.display = 'block'; return;
@@ -1304,6 +1571,9 @@ function handleRegister() {
     errEl.textContent = 'An account with this email already exists.';
     errEl.style.display = 'block'; return;
   }
+
+  const preVerified = PRE_VERIFIED_EMAILS.includes(email);
+  const verificationCode = preVerified ? null : generateVerificationCode();
 
   const newUser = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
@@ -1314,6 +1584,8 @@ function handleRegister() {
     bio: '',
     joined: new Date().toISOString().slice(0, 10),
     banned: false,
+    verified: preVerified,
+    verificationCode: verificationCode,
   };
 
   users.push(newUser);
@@ -1329,7 +1601,13 @@ function handleRegister() {
 
   renderAuthArea();
   renderAll();
-  showToast('Account Created');
+
+  if (!preVerified && REQUIRE_VERIFICATION) {
+    showVerificationModal(verificationCode);
+    showToast('Account created — please verify your email');
+  } else {
+    showToast('Account Created');
+  }
 }
 
 function handleLogin() {
@@ -1373,6 +1651,142 @@ function handleLogout() {
   renderAuthArea();
   renderAll();
   showToast('Signed Out');
+}
+
+function showVerificationModal(code) {
+  document.getElementById('verify-code-input').value = '';
+  const errEl = document.getElementById('verify-error');
+  if (errEl) errEl.style.display = 'none';
+  const statusEl = document.getElementById('verify-status');
+  const resendStatus = document.getElementById('resend-status');
+  if (resendStatus) resendStatus.textContent = '';
+
+  openModal('verify-modal');
+
+  // Send verification email via EmailJS
+  sendVerificationEmail(code).then(sent => {
+    if (sent) {
+      statusEl.innerHTML = `<p style="font-size:0.82rem;color:var(--accent);">✓ Code sent to <strong>${esc(currentUser.email)}</strong></p>`;
+    } else {
+      statusEl.innerHTML = `<p style="font-size:0.82rem;color:var(--warm);">Could not send email. Your code is: <span class="verify-code-display" style="display:inline-block;margin-top:8px;">${esc(code)}</span></p>`;
+    }
+  });
+}
+
+async function sendVerificationEmail(code) {
+  const isConfigured = EMAILJS_CONFIG.publicKey !== 'YOUR_PUBLIC_KEY' &&
+    EMAILJS_CONFIG.serviceId !== 'YOUR_SERVICE_ID' &&
+    EMAILJS_CONFIG.templateId !== 'YOUR_TEMPLATE_ID';
+
+  if (!isConfigured || !currentUser) return false;
+
+  try {
+    await emailjs.send(
+      EMAILJS_CONFIG.serviceId,
+      EMAILJS_CONFIG.templateId,
+      {
+        to_email: currentUser.email,
+        to_name: currentUser.username,
+        verification_code: code,
+        site_name: 'The ReviewBoard',
+      },
+      { publicKey: EMAILJS_CONFIG.publicKey }
+    );
+    return true;
+  } catch (err) {
+    console.error('EmailJS send failed:', err);
+    return false;
+  }
+}
+
+function triggerVerification() {
+  if (!currentUser) return;
+  const userIdx = users.findIndex(u => u.id === currentUser.id);
+  if (userIdx === -1) return;
+  let code = users[userIdx].verificationCode;
+  if (!code) {
+    code = generateVerificationCode();
+    users[userIdx].verificationCode = code;
+    saveUsers();
+    currentUser = { ...users[userIdx] };
+    saveSession();
+  }
+  showVerificationModal(code);
+}
+
+function handleVerifyEmail() {
+  const input = document.getElementById('verify-code-input').value.trim();
+  const errEl = document.getElementById('verify-error');
+  if (!currentUser) return;
+
+  const userIdx = users.findIndex(u => u.id === currentUser.id);
+  if (userIdx === -1) return;
+
+  if (!input || input.length !== 6) {
+    errEl.textContent = 'Enter the 6-digit code.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  if (input !== users[userIdx].verificationCode) {
+    errEl.textContent = 'Incorrect code. Please try again.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  users[userIdx].verified = true;
+  users[userIdx].verificationCode = null;
+  saveUsers();
+  currentUser = { ...users[userIdx] };
+  saveSession();
+
+  closeModal('verify-modal');
+  renderAuthArea();
+  renderAll();
+  showToast('Email Verified');
+}
+
+function resendVerificationCode() {
+  if (!currentUser) return;
+  const userIdx = users.findIndex(u => u.id === currentUser.id);
+  if (userIdx === -1) return;
+
+  const resendStatus = document.getElementById('resend-status');
+  const resendLink = document.getElementById('resend-link');
+
+  // Cooldown — disable for 30 seconds
+  if (resendLink) {
+    resendLink.style.pointerEvents = 'none';
+    resendLink.style.opacity = '0.4';
+    let countdown = 30;
+    resendStatus.textContent = `Wait ${countdown}s before resending...`;
+    const timer = setInterval(() => {
+      countdown--;
+      if (countdown <= 0) {
+        clearInterval(timer);
+        resendLink.style.pointerEvents = '';
+        resendLink.style.opacity = '';
+        resendStatus.textContent = '';
+      } else {
+        resendStatus.textContent = `Wait ${countdown}s before resending...`;
+      }
+    }, 1000);
+  }
+
+  const newCode = generateVerificationCode();
+  users[userIdx].verificationCode = newCode;
+  saveUsers();
+  currentUser = { ...users[userIdx] };
+  saveSession();
+
+  const statusEl = document.getElementById('verify-status');
+  sendVerificationEmail(newCode).then(sent => {
+    if (sent) {
+      statusEl.innerHTML = `<p style="font-size:0.82rem;color:var(--accent);">✓ New code sent to <strong>${esc(currentUser.email)}</strong></p>`;
+    } else {
+      statusEl.innerHTML = `<p style="font-size:0.82rem;color:var(--warm);">Could not send email. Your code is: <span class="verify-code-display" style="display:inline-block;margin-top:8px;">${esc(newCode)}</span></p>`;
+    }
+  });
 }
 
 function closeDropdown() {
@@ -1426,11 +1840,20 @@ function renderAuthArea() {
     ? `<img src="${esc(currentUser.avatar)}" alt="">`
     : getInitials(currentUser.username);
 
-  const modRing = isMod(currentUser) ? '<div class="mod-ring"></div>' : '';
+  const role = getUserRole(currentUser);
+  const hasRoleRing = ROLE_HIERARCHY[role] >= ROLE_HIERARCHY['curator'];
+  const ringColor = hasRoleRing ? (ROLE_COLORS[role]?.color || 'var(--accent)') : '';
+  const modRing = hasRoleRing ? `<div class="mod-ring" style="border-color:${ringColor}"></div>` : '';
+
+  const roleBadge = getRoleBadgeHTML(currentUser);
+  const verifiedStatus = isVerified(currentUser)
+    ? '<span class="verified-tag">✓ Verified</span>'
+    : '<span class="unverified-tag">Unverified</span>';
+  const activityBadge = getActivityBadgeHTML(currentUser);
 
   area.innerHTML = `
     <div class="user-menu">
-      <button class="user-avatar-btn" id="avatar-btn" onclick="document.getElementById('user-dropdown').classList.toggle('open')">
+      <button class="user-avatar-btn" id="avatar-btn" style="${!currentUser.avatar ? 'color:' + getDefaultAvatarColor(currentUser) : ''}" onclick="document.getElementById('user-dropdown').classList.toggle('open')">
         ${modRing}
         ${currentUser.avatar ? `<img src="${esc(currentUser.avatar)}" alt="">` : getInitials(currentUser.username)}
       </button>
@@ -1438,10 +1861,16 @@ function renderAuthArea() {
         <div class="dropdown-header">
           <div class="dropdown-name">
             ${esc(currentUser.username)}
-            ${isMod(currentUser) ? '<span class="mod-badge">Mod</span>' : ''}
+            ${roleBadge}
+            ${activityBadge}
           </div>
-          <div class="dropdown-email">${esc(currentUser.email)}</div>
+          <div class="dropdown-email">${esc(currentUser.email)} ${verifiedStatus}</div>
         </div>
+        ${!isVerified(currentUser) && REQUIRE_VERIFICATION ? `
+        <button class="dropdown-item" onclick="closeDropdown();triggerVerification()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          Verify Email
+        </button>` : ''}
         <button class="dropdown-item" onclick="closeDropdown();switchView('profile')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>
           Profile
@@ -1544,11 +1973,13 @@ function renderReviews() {
     if (r.featured) badges.push('<span class="card-featured">Featured</span>');
     const badgeHTML = badges.length ? `<div class="card-badges">${badges.join('')}</div>` : '';
 
+    const avatarColor = authorUser ? getDefaultAvatarColor(authorUser) : 'var(--accent)';
     const avatarHTML = authorAvatar
       ? `<span class="card-author-avatar"><img src="${esc(authorAvatar)}" alt=""></span>`
-      : `<span class="card-author-avatar">${getInitials(authorName)}</span>`;
+      : `<span class="card-author-avatar" style="color:${avatarColor}">${getInitials(authorName)}</span>`;
 
-    const modBadge = authorIsMod ? ' <span class="mod-badge" style="font-size:0.5rem;padding:1px 6px;">Mod</span>' : '';
+    const authorRoleBadge = authorUser ? getRoleBadgeHTML(authorUser) : '';
+    const authorActivityBadge = authorUser ? getActivityBadgeHTML(authorUser) : '';
 
     let modActions = '';
     if (isModUser) {
@@ -1581,7 +2012,7 @@ function renderReviews() {
         <div class="card-footer">
           <div class="card-meta">
             <span class="card-author">
-              <span class="card-author-badge">${avatarHTML} ${esc(authorName)}${modBadge}</span>
+              <span class="card-author-badge">${avatarHTML} ${esc(authorName)} ${authorRoleBadge} ${authorActivityBadge}</span>
             </span>
             <span class="card-date">${timeAgo(r.date)}</span>
           </div>
@@ -1640,6 +2071,30 @@ function renderWriteView() {
     return;
   }
 
+  if (REQUIRE_VERIFICATION && !isVerified(currentUser)) {
+    container.innerHTML = `
+      <div class="verify-notice">
+        <h3>Email Verification Required</h3>
+        <p>You must verify your email address before writing reviews.</p>
+        <button class="auth-btn" onclick="triggerVerification()">Verify Now</button>
+      </div>
+    `;
+    return;
+  }
+
+  const remaining = getReviewsRemaining(currentUser);
+  if (remaining <= 0) {
+    container.innerHTML = `
+      <div class="login-notice">
+        <h3>Rate Limit Reached</h3>
+        <p>You've reached your daily review limit. Come back tomorrow!</p>
+      </div>
+    `;
+    return;
+  }
+
+  const rateLimitInfo = `<div class="rate-limit-notice">${remaining} review${remaining !== 1 ? 's' : ''} remaining today</div>`;
+
   container.innerHTML = `
     <div class="form-container">
       <div class="form-inner">
@@ -1681,6 +2136,7 @@ function renderWriteView() {
           <textarea id="f-body" placeholder="The good, the bad, and the unexpected..."></textarea>
         </div>
         <button class="submit-btn" id="submit-btn">Publish Review</button>
+        ${rateLimitInfo}
       </div>
     </div>
   `;
@@ -1710,6 +2166,7 @@ function renderWriteView() {
     if (!subject) { showToast('Enter what you are reviewing'); return; }
     if (!selectedRating) { showToast('Select a rating'); return; }
     if (!body) { showToast('Write your review'); return; }
+    if (!canWriteReview(currentUser)) { showToast('Daily review limit reached', true); return; }
 
     reviews.unshift({
       id: nextId++, subject, category, rating: selectedRating,
@@ -1754,11 +2211,20 @@ function renderProfileView() {
     ? `<img src="${esc(currentUser.avatar)}" alt="">`
     : getInitials(currentUser.username);
 
+  const roleBadge = getRoleBadgeHTML(currentUser);
+  const activityBadge = getActivityBadgeHTML(currentUser);
+  const verifiedBadge = isVerified(currentUser)
+    ? '<span class="verified-tag">✓ Verified</span>'
+    : '<span class="unverified-tag">Unverified</span>';
+
   container.innerHTML = `
     <div class="profile-card">
       <div style="position:relative;z-index:2;">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:20px;flex-wrap:wrap;">
+          ${roleBadge} ${activityBadge} ${verifiedBadge}
+        </div>
         <div class="profile-avatar-section">
-          <div class="profile-avatar-large" id="profile-avatar-preview">
+          <div class="profile-avatar-large" id="profile-avatar-preview" style="color:${getDefaultAvatarColor(currentUser)}">
             ${avatarContent}
           </div>
           <div class="avatar-upload-area">
@@ -1897,11 +2363,16 @@ function renderModPanel() {
     tabContent.innerHTML = users.map(u => {
       const avatar = u.avatar
         ? `<img src="${esc(u.avatar)}" alt="">`
-        : getInitials(u.username);
+        : `<span style="color:${getDefaultAvatarColor(u)}">${getInitials(u.username)}</span>`;
       const tags = [];
-      if (isMod(u)) tags.push('<span class="mod-badge">Mod</span>');
+      const roleBadge = getRoleBadgeHTML(u);
+      if (roleBadge) tags.push(roleBadge);
+      tags.push(getActivityBadgeHTML(u));
       if (u.banned) tags.push('<span class="banned-tag">Banned</span>');
+      if (!isVerified(u)) tags.push('<span class="unverified-tag">Unverified</span>');
+      else tags.push('<span class="verified-tag">✓</span>');
       const userReviewCount = reviews.filter(r => r.authorId === u.id && !r.deleted).length;
+      const userRole = getUserRole(u);
 
       return `
       <div class="mod-user-row">
@@ -1909,7 +2380,7 @@ function renderModPanel() {
         <div class="mod-user-info">
           <div class="mod-user-name">${esc(u.username)} ${tags.join(' ')}</div>
           <div class="mod-user-email">${esc(u.email)}</div>
-          <div class="mod-user-meta">${userReviewCount} reviews · Joined ${u.joined || 'Unknown'}</div>
+          <div class="mod-user-meta">${userReviewCount} reviews · Role: ${userRole} · Joined ${u.joined || 'Unknown'}</div>
         </div>
         <div class="mod-actions">
           ${u.id !== currentUser.id ? `
