@@ -950,8 +950,7 @@ try {
 /* ROLE & CONFIG CONSTANTS                      */
 /* ============================================ */
 const USER_ROLES = {
-  'benny.f208@gmail.com': 'admin',
-  'artmostaghim@gmail.com': 'curator',
+  'admin@thereviewboard.com': 'admin',
 };
 
 const ROLE_HIERARCHY = { user: 0, curator: 1, moderator: 2, admin: 3 };
@@ -995,17 +994,6 @@ const CATEGORIES = {
 };
 
 const RATING_LABELS = { 1: 'Poor', 2: 'Fair', 3: 'Good', 4: 'Great', 5: 'Exceptional' };
-
-const SAMPLE_REVIEWS = [
-  { subject: 'Erewhon Smoothie Bar', category: 'food', rating: 4, author: 'healthnut', body: 'Overpriced but genuinely good. The Hailey Bieber smoothie lives up to the hype. Just don\'t look at your bank statement after.', date: '2025-05-20', helpful: 12, pinned: false, featured: true },
-  { subject: 'Arc Browser', category: 'product', rating: 5, author: 'techie42', body: 'Finally a browser that doesn\'t feel like it was designed in 2008. Spaces and Boosts are game-changers. Safari could never.', date: '2025-05-18', helpful: 24, pinned: true, featured: false },
-  { subject: 'Severance (Season 2)', category: 'media', rating: 5, author: 'tvaddict', body: 'Ben Stiller outdid himself. Every frame is a painting and every episode leaves you questioning your own corporate existence.', date: '2025-05-15', helpful: 31, pinned: false, featured: true },
-  { subject: 'The Strand Bookstore', category: 'place', rating: 5, author: 'bookworm', body: '18 miles of books and infinite vibes. Got lost for 3 hours and found a first edition Vonnegut. NYC at its best.', date: '2025-05-12', helpful: 18, pinned: false, featured: false },
-  { subject: 'Blank Street Matcha', category: 'food', rating: 3, author: 'caffeine_queen', body: 'It\'s fine. Convenient and cheap but tastes like matcha-flavored milk rather than actual ceremonial grade. Good for a quick fix though.', date: '2025-05-10', helpful: 7, pinned: false, featured: false },
-  { subject: 'Meow Wolf (Las Vegas)', category: 'experience', rating: 5, author: 'artlover', body: 'Walked in skeptical, walked out with my mind completely rearranged. The Omega Mart section alone is worth the trip. Bring comfortable shoes.', date: '2025-05-08', helpful: 22, pinned: false, featured: false },
-  { subject: 'Nothing Phone (2a)', category: 'product', rating: 4, author: 'gadgetguy', body: 'The Glyph interface is more than a gimmick now — it\'s actually useful. Camera is surprisingly good for the price. Stock Android feel with personality.', date: '2025-05-05', helpful: 15, pinned: false, featured: false },
-  { subject: 'Duolingo (2025 Update)', category: 'product', rating: 2, author: 'polyglot_fail', body: 'The AI features feel half-baked and the guilt-trip notifications have reached emotional manipulation levels. The owl knows too much.', date: '2025-05-01', helpful: 42, pinned: false, featured: false },
-];
 
 /* ============================================ */
 /* STATE (Firebase-backed)                      */
@@ -2364,15 +2352,6 @@ if (firebaseReady) {
 
   // Real-time reviews listener
   db.collection('reviews').onSnapshot(snap => {
-    if (snap.empty) {
-      const batch = db.batch();
-      SAMPLE_REVIEWS.forEach(sr => {
-        const ref = db.collection('reviews').doc();
-        batch.set(ref, { ...sr, deleted: false });
-      });
-      batch.commit();
-      return;
-    }
     reviews = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderStats();
     renderReviews();
@@ -2390,8 +2369,8 @@ if (firebaseReady) {
     renderAll();
   });
 } else {
-  // Offline/preview mode — load sample data directly
-  reviews = SAMPLE_REVIEWS.map((r, i) => ({ id: 'sample_' + i, ...r, deleted: false }));
+  // Offline/preview mode — no data
+  reviews = [];
   renderAuthArea();
   renderAll();
 }
