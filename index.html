@@ -1199,10 +1199,15 @@ async function handleRegister() {
 
     if (!preVerified && REQUIRE_VERIFICATION) {
       // Wait for onAuthStateChanged to set currentUser, then show verification
-      setTimeout(() => {
-        showVerificationModal(verificationCode);
-        showToast('Account created — please verify your email');
-      }, 500);
+      const waitForUser = () => {
+        if (currentUser) {
+          showVerificationModal(verificationCode);
+          showToast('Account created — please verify your email');
+        } else {
+          setTimeout(waitForUser, 200);
+        }
+      };
+      setTimeout(waitForUser, 300);
     } else {
       showToast('Account Created');
     }
@@ -1309,7 +1314,7 @@ async function triggerVerification() {
 async function handleVerifyEmail() {
   const input = document.getElementById('verify-code-input').value.trim();
   const errEl = document.getElementById('verify-error');
-  if (!currentUser) return;
+  if (!currentUser || !firebaseReady) return;
 
   if (!input || input.length !== 6) {
     errEl.textContent = 'Enter the 6-digit code.';
@@ -1317,31 +1322,41 @@ async function handleVerifyEmail() {
     return;
   }
 
-  const userDoc = await db.collection('users').doc(currentUser.id).get();
-  if (!userDoc.exists) return;
-  const storedCode = userDoc.data().verificationCode;
+  try {
+    const userDoc = await db.collection('users').doc(currentUser.id).get();
+    if (!userDoc.exists) {
+      errEl.textContent = 'User document not found.';
+      errEl.style.display = 'block';
+      return;
+    }
+    const storedCode = userDoc.data().verificationCode;
 
-  if (input !== storedCode) {
-    errEl.textContent = 'Incorrect code. Please try again.';
+    if (input !== storedCode) {
+      errEl.textContent = 'Incorrect code. Please try again.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    await db.collection('users').doc(currentUser.id).update({
+      verified: true,
+      verificationCode: null,
+    });
+    currentUser.verified = true;
+    currentUser.verificationCode = null;
+
+    closeModal('verify-modal');
+    renderAuthArea();
+    renderAll();
+    showToast('Email Verified');
+  } catch(e) {
+    console.error('Verification error:', e);
+    errEl.textContent = 'Verification failed: ' + e.message;
     errEl.style.display = 'block';
-    return;
   }
-
-  await db.collection('users').doc(currentUser.id).update({
-    verified: true,
-    verificationCode: null,
-  });
-  currentUser.verified = true;
-  currentUser.verificationCode = null;
-
-  closeModal('verify-modal');
-  renderAuthArea();
-  renderAll();
-  showToast('Email Verified');
 }
 
 async function resendVerificationCode() {
-  if (!currentUser) return;
+  if (!currentUser || !firebaseReady) return;
   const resendStatus = document.getElementById('resend-status');
   const resendLink = document.getElementById('resend-link');
 
