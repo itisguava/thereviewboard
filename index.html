@@ -969,12 +969,43 @@ const INVITE_ONLY = false;
 const ALLOWED_EMAILS = [];
 
 const REVIEW_LIMITS = { user: 3, curator: 10, moderator: 50, admin: Infinity };
-const BADGE_THRESHOLDS = [
-  { min: 50, label: 'Legend', color: '#f8c58a', bg: 'rgba(248,197,138,0.1)' },
-  { min: 25, label: 'Expert', color: '#a89cc4', bg: 'rgba(168,156,196,0.1)' },
-  { min: 10, label: 'Regular', color: '#85dcb8', bg: 'rgba(133,220,184,0.1)' },
-  { min: 5,  label: 'Active', color: '#8ab4f8', bg: 'rgba(138,180,248,0.1)' },
-  { min: 1,  label: 'New', color: '#8a847a', bg: 'rgba(138,132,122,0.1)' },
+
+const ALL_BADGES = {
+  newcomer:    { label: 'Newcomer',     color: '#8a847a', bg: 'rgba(138,132,122,0.1)' },
+  active:      { label: 'Active',       color: '#8ab4f8', bg: 'rgba(138,180,248,0.1)' },
+  regular:     { label: 'Regular',      color: '#85dcb8', bg: 'rgba(133,220,184,0.1)' },
+  expert:      { label: 'Expert',       color: '#a89cc4', bg: 'rgba(168,156,196,0.1)' },
+  legend:      { label: 'Legend',       color: '#f8c58a', bg: 'rgba(248,197,138,0.1)' },
+  trailblazer: { label: 'Trailblazer',  color: '#e8a87c', bg: 'rgba(232,168,124,0.1)' },
+  tastemaker:  { label: 'Tastemaker',   color: '#c4a06a', bg: 'rgba(196,160,106,0.1)' },
+  critic:      { label: 'Critic',       color: '#c46a6a', bg: 'rgba(196,106,106,0.1)' },
+  connoisseur: { label: 'Connoisseur',  color: '#d4a8c8', bg: 'rgba(212,168,200,0.1)' },
+  explorer:    { label: 'Explorer',     color: '#6ac4b0', bg: 'rgba(106,196,176,0.1)' },
+  storyteller: { label: 'Storyteller',  color: '#b8a06a', bg: 'rgba(184,160,106,0.1)' },
+  scholar:     { label: 'Scholar',      color: '#7a9cc4', bg: 'rgba(122,156,196,0.1)' },
+  foodie:      { label: 'Foodie',       color: '#e88a6a', bg: 'rgba(232,138,106,0.1)' },
+  globetrotter:{ label: 'Globetrotter', color: '#6ab4e8', bg: 'rgba(106,180,232,0.1)' },
+  trendsetter: { label: 'Trendsetter',  color: '#c86ac4', bg: 'rgba(200,106,196,0.1)' },
+  veteran:     { label: 'Veteran',      color: '#8a8a6a', bg: 'rgba(138,138,106,0.1)' },
+  rising_star: { label: 'Rising Star',  color: '#f0c040', bg: 'rgba(240,192,64,0.1)' },
+  helpful:     { label: 'Helpful',      color: '#7aac8a', bg: 'rgba(122,172,138,0.1)' },
+  pioneer:     { label: 'Pioneer',      color: '#c49a6a', bg: 'rgba(196,154,106,0.1)' },
+  insider:     { label: 'Insider',      color: '#9a7ac4', bg: 'rgba(154,122,196,0.1)' },
+  mvp:         { label: 'MVP',          color: '#f0a040', bg: 'rgba(240,160,64,0.12)' },
+  og:          { label: 'OG',           color: '#c4c4c4', bg: 'rgba(196,196,196,0.1)' },
+  vip:         { label: 'VIP',          color: '#e8c86a', bg: 'rgba(232,200,106,0.12)' },
+  trusted:     { label: 'Trusted',      color: '#6ac48a', bg: 'rgba(106,196,138,0.1)' },
+  champion:    { label: 'Champion',     color: '#e86a8a', bg: 'rgba(232,106,138,0.12)' },
+};
+
+// Auto-earned badges based on activity score (reviews + helpful votes)
+// Users earn all badges at or below their score, not just the highest
+const AUTO_BADGE_THRESHOLDS = [
+  { min: 1,  badge: 'newcomer' },
+  { min: 5,  badge: 'active' },
+  { min: 10, badge: 'regular' },
+  { min: 25, badge: 'expert' },
+  { min: 50, badge: 'legend' },
 ];
 
 const REQUIRE_VERIFICATION = true;
@@ -991,7 +1022,6 @@ const CATEGORIES = {
   media: { label: 'Books & Media', cls: 'cat-media' },
   place: { label: 'Places', cls: 'cat-place' },
   experience: { label: 'Experiences', cls: 'cat-experience' },
-  game: { label: 'Games', cls: 'cat-game' },
   other: { label: 'Other', cls: 'cat-other' },
 };
 
@@ -1062,21 +1092,34 @@ function getRoleBadgeHTML(user) {
   return `<span class="role-badge" style="color:${rc.color};background:${rc.bg}">${rc.label}</span>`;
 }
 
-function getUserActivityBadge(user) {
-  if (!user) return null;
+function getAutoEarnedBadges(user) {
+  if (!user) return [];
   const count = reviews.filter(r => r.authorId === user.id && !r.deleted).length;
   const totalHelpful = reviews.filter(r => r.authorId === user.id && !r.deleted).reduce((s, r) => s + (r.helpful || 0), 0);
   const score = count + totalHelpful;
-  for (const b of BADGE_THRESHOLDS) {
-    if (score >= b.min) return b;
-  }
-  return null;
+  return AUTO_BADGE_THRESHOLDS.filter(t => score >= t.min).map(t => t.badge);
 }
 
-function getActivityBadgeHTML(user) {
-  const badge = getUserActivityBadge(user);
-  if (!badge) return '';
-  return `<span class="activity-badge" style="color:${badge.color};background:${badge.bg}">${badge.label}</span>`;
+function getAdminBadges(user) {
+  if (!user || !user.badges || !Array.isArray(user.badges)) return [];
+  return user.badges.filter(b => ALL_BADGES[b]);
+}
+
+function getUserBadges(user) {
+  const auto = getAutoEarnedBadges(user);
+  const admin = getAdminBadges(user);
+  // Merge and deduplicate, auto badges first (highest last → reverse so highest shows first)
+  const merged = [...new Set([...auto.reverse(), ...admin])];
+  return merged;
+}
+
+function getBadgesHTML(user) {
+  const badges = getUserBadges(user);
+  if (!badges.length) return '';
+  return badges.map(b => {
+    const bd = ALL_BADGES[b];
+    return `<span class="activity-badge" style="color:${bd.color};background:${bd.bg}">${bd.label}</span>`;
+  }).join(' ');
 }
 
 function isVerified(user) {
@@ -1178,6 +1221,7 @@ async function handleRegister() {
       avatar: '',
       bio: '',
       role: 'user',
+      badges: [],
       joined: new Date().toISOString().slice(0, 10),
       banned: false,
       verified: preVerified,
@@ -1430,14 +1474,11 @@ function renderAuthArea() {
   if (freshUser) currentUser = { ...freshUser };
 
   const roleBadge = getRoleBadgeHTML(currentUser);
-  const activityBadge = getActivityBadgeHTML(currentUser);
+  const userBadges = getBadgesHTML(currentUser);
   const role = getUserRole(currentUser);
   const hasRoleRing = ROLE_HIERARCHY[role] >= ROLE_HIERARCHY['curator'];
   const ringColor = hasRoleRing ? (ROLE_COLORS[role]?.color || 'var(--accent)') : '';
   const modRing = hasRoleRing ? `<div class="mod-ring" style="border-color:${ringColor}"></div>` : '';
-  const verifiedStatus = isVerified(currentUser)
-    ? '<span class="verified-tag">✓ Verified</span>'
-    : '<span class="unverified-tag">Unverified</span>';
 
   area.innerHTML = `
     <div class="user-menu">
@@ -1450,15 +1491,10 @@ function renderAuthArea() {
           <div class="dropdown-name">
             ${esc(currentUser.username)}
             ${roleBadge}
-            ${activityBadge}
+            ${userBadges}
           </div>
-          <div class="dropdown-email">${esc(currentUser.email)} ${verifiedStatus}</div>
+          <div class="dropdown-email">${esc(currentUser.email)}</div>
         </div>
-        ${!isVerified(currentUser) && REQUIRE_VERIFICATION ? `
-        <button class="dropdown-item" onclick="closeDropdown();triggerVerification()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          Verify Email
-        </button>` : ''}
         <button class="dropdown-item" onclick="closeDropdown();switchView('profile')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>
           Profile
@@ -1555,7 +1591,7 @@ function renderReviews() {
       ? `<span class="card-author-avatar"><img src="${esc(authorAvatar)}" alt=""></span>`
       : `<span class="card-author-avatar" style="color:${avatarColor}">${getInitials(authorName)}</span>`;
     const authorRoleBadge = authorUser ? getRoleBadgeHTML(authorUser) : '';
-    const authorActivityBadge = authorUser ? getActivityBadgeHTML(authorUser) : '';
+    const authorBadges = authorUser ? getBadgesHTML(authorUser) : '';
     const animClass = initialReviewsLoaded ? 'no-anim' : '';
 
     let modActions = '';
@@ -1589,7 +1625,7 @@ function renderReviews() {
           <div class="card-footer">
             <div class="card-meta">
               <span class="card-author">
-                <span class="card-author-badge">${avatarHTML} ${esc(authorName)} ${authorRoleBadge} ${authorActivityBadge}</span>
+                <span class="card-author-badge">${avatarHTML} ${esc(authorName)} ${authorRoleBadge} ${authorBadges}</span>
               </span>
               <span class="card-date">${timeAgo(r.date)}</span>
             </div>
@@ -1785,16 +1821,13 @@ function renderProfileView() {
     ? `<img src="${esc(currentUser.avatar)}" alt="">`
     : getInitials(currentUser.username);
   const roleBadge = getRoleBadgeHTML(currentUser);
-  const activityBadge = getActivityBadgeHTML(currentUser);
-  const verifiedBadge = isVerified(currentUser)
-    ? '<span class="verified-tag">✓ Verified</span>'
-    : '<span class="unverified-tag">Unverified</span>';
+  const userBadges = getBadgesHTML(currentUser);
 
   container.innerHTML = `
     <div class="profile-card">
       <div style="position:relative;z-index:2;">
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:20px;flex-wrap:wrap;">
-          ${roleBadge} ${activityBadge} ${verifiedBadge}
+          ${roleBadge} ${userBadges}
         </div>
         <div class="profile-avatar-section">
           <div class="profile-avatar-large" id="profile-avatar-preview" style="color:${getDefaultAvatarColor(currentUser)}">
@@ -1949,7 +1982,6 @@ function renderModPanel() {
         <div class="mod-bulk-actions">
           <button class="mod-action-btn danger" onclick="modBulkBan()" ${!someSelected ? 'disabled style="opacity:0.3;pointer-events:none;"' : ''}>Ban Selected</button>
           <button class="mod-action-btn success" onclick="modBulkUnban()" ${!someSelected ? 'disabled style="opacity:0.3;pointer-events:none;"' : ''}>Unban Selected</button>
-          <button class="mod-action-btn success" onclick="modBulkVerify()" ${!someSelected ? 'disabled style="opacity:0.3;pointer-events:none;"' : ''}>Verify Selected</button>
           <button class="mod-action-btn danger" onclick="modBulkDeleteReviews()" ${!someSelected ? 'disabled style="opacity:0.3;pointer-events:none;"' : ''}>Del All Reviews</button>
           <button class="mod-action-btn danger" onclick="modBulkDeleteUsers()" ${!someSelected ? 'disabled style="opacity:0.3;pointer-events:none;"' : ''}>Delete Users</button>
         </div>
@@ -1963,10 +1995,8 @@ function renderModPanel() {
       const tags = [];
       const roleBadge = getRoleBadgeHTML(u);
       if (roleBadge) tags.push(roleBadge);
-      tags.push(getActivityBadgeHTML(u));
+      tags.push(getBadgesHTML(u));
       if (u.banned) tags.push('<span class="banned-tag">Banned</span>');
-      if (!isVerified(u)) tags.push('<span class="unverified-tag">Unverified</span>');
-      else tags.push('<span class="verified-tag">✓</span>');
       const userReviewCount = reviews.filter(r => r.authorId === u.id && !r.deleted).length;
       const userRole = getUserRole(u);
       const isSelected = selectedUserIds.has(u.id);
@@ -1975,6 +2005,15 @@ function renderModPanel() {
       const roleOptions = ['user', 'curator', 'moderator', 'admin'].map(r =>
         `<option value="${r}" ${userRole === r ? 'selected' : ''}>${r.charAt(0).toUpperCase() + r.slice(1)}</option>`
       ).join('');
+
+      const autoBadges = getAutoEarnedBadges(u);
+      const adminBadges = getAdminBadges(u);
+      const badgeOptions = Object.entries(ALL_BADGES).map(([key, bd]) => {
+        const isAuto = autoBadges.includes(key);
+        const isAdmin = adminBadges.includes(key);
+        if (isAuto) return `<option value="${key}" selected disabled>${bd.label} ✦</option>`;
+        return `<option value="${key}" ${isAdmin ? 'selected' : ''}>${bd.label}</option>`;
+      }).join('');
 
       return `
         <div class="mod-user-row-expanded ${isSelected ? 'selected' : ''}">
@@ -1987,8 +2026,9 @@ function renderModPanel() {
           </div>
           <div class="mod-user-actions-expanded">
             ${!isSelf ? `
+              <input type="text" class="mod-username-input" value="${esc(u.username)}" placeholder="Username" onchange="modChangeUsername('${u.id}', this.value)" style="width:120px;background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:8px;color:var(--text);font-family:var(--sans);font-size:0.76rem;padding:5px 10px;outline:none;">
               <select class="mod-role-select" onchange="modChangeRole('${u.id}', this.value)">${roleOptions}</select>
-              ${!isVerified(u) ? `<button class="mod-action-btn success" onclick="modForceVerify('${u.id}')">Verify</button>` : ''}
+              <select class="mod-badge-select" multiple size="3" onchange="modChangeBadges('${u.id}', this)" style="width:130px;background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:8px;color:var(--text);font-family:var(--sans);font-size:0.7rem;padding:4px;outline:none;">${badgeOptions}</select>
               <button class="mod-action-btn" onclick="modResetPassword('${u.id}')">Reset PW</button>
               <button class="mod-action-btn ${u.banned ? 'success' : 'danger'}" onclick="modToggleBan('${u.id}')">
                 ${u.banned ? 'Unban' : 'Ban'}
@@ -2086,6 +2126,35 @@ async function modChangeRole(userId, newRole) {
   await db.collection('users').doc(userId).update({ role: newRole });
   renderAll();
   showToast(esc(u.username) + ' → ' + newRole.charAt(0).toUpperCase() + newRole.slice(1));
+}
+
+async function modChangeUsername(userId, newName) {
+  newName = newName.trim();
+  if (!newName || newName.length < 2) { showToast('Username must be at least 2 characters', true); return; }
+  const u = users.find(x => x.id === userId);
+  if (!u) return;
+  await db.collection('users').doc(userId).update({ username: newName });
+  // Update author name on their reviews
+  const batch = db.batch();
+  reviews.forEach(r => {
+    if (r.authorId === userId) {
+      batch.update(db.collection('reviews').doc(r.id), { author: newName });
+    }
+  });
+  await batch.commit();
+  showToast(esc(u.username) + ' renamed to ' + esc(newName));
+}
+
+async function modChangeBadges(userId, selectEl) {
+  const u = users.find(x => x.id === userId);
+  const autoBadges = getAutoEarnedBadges(u);
+  // Only save manually-assigned badges (not auto-earned ones)
+  const selected = Array.from(selectEl.selectedOptions).map(o => o.value).filter(b => !autoBadges.includes(b));
+  await db.collection('users').doc(userId).update({ badges: selected });
+  if (u) u.badges = selected;
+  if (currentUser && currentUser.id === userId) currentUser.badges = selected;
+  renderAll();
+  showToast('Badges updated for ' + esc(u?.username || 'user'));
 }
 
 async function modForceVerify(userId) {
@@ -2329,6 +2398,7 @@ if (firebaseReady) {
             avatar: firebaseUser.photoURL || '',
             bio: '',
             role: 'user',
+            badges: [],
             joined: new Date().toISOString().slice(0, 10),
             banned: false,
             verified: PRE_VERIFIED_EMAILS.includes(firebaseUser.email.toLowerCase()),
@@ -2348,6 +2418,7 @@ if (firebaseReady) {
           avatar: firebaseUser.photoURL || '',
           bio: '',
           role: 'user',
+          badges: [],
           bio: '',
           joined: new Date().toISOString().slice(0, 10),
           banned: false,
