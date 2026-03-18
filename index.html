@@ -1108,8 +1108,9 @@ function getAdminBadges(user) {
 function getUserBadges(user) {
   const auto = getAutoEarnedBadges(user);
   const admin = getAdminBadges(user);
-  // Merge and deduplicate, auto badges first (highest last → reverse so highest shows first)
-  const merged = [...new Set([...auto.reverse(), ...admin])];
+  // Show only the highest auto-earned badge, plus all admin-assigned badges
+  const best = auto.length ? [auto[auto.length - 1]] : [];
+  const merged = [...new Set([...best, ...admin])];
   return merged;
 }
 
