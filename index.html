@@ -319,6 +319,7 @@ animation: cardIn 0.5s ease both;
 from { opacity: 0; transform: translateY(20px); }
 to { opacity: 1; transform: translateY(0); }
 }
+.review-card.no-anim { animation: none !important; }
 .review-card:hover {
 border-color: var(--border-light);
 transform: translateY(-2px);
@@ -1009,6 +1010,8 @@ let editingReviewId = null;
 let modTab = 'reviews';
 let modUserSearch = '';
 let selectedUserIds = new Set();
+let initialReviewsLoaded = false;
+let skipNextReviewRender = false;
 
 // No-op save functions — Firestore handles persistence
 function saveReviews() {}
@@ -1552,6 +1555,7 @@ function renderReviews() {
       : `<span class="card-author-avatar" style="color:${avatarColor}">${getInitials(authorName)}</span>`;
     const authorRoleBadge = authorUser ? getRoleBadgeHTML(authorUser) : '';
     const authorActivityBadge = authorUser ? getActivityBadgeHTML(authorUser) : '';
+    const animClass = initialReviewsLoaded ? 'no-anim' : '';
 
     let modActions = '';
     if (isModUser) {
@@ -1566,7 +1570,7 @@ function renderReviews() {
     }
 
     return `
-      <div class="review-card" style="animation-delay:${i * 0.07}s">
+      <div class="review-card ${animClass}" style="animation-delay:${i * 0.07}s">
         <div class="card-sheen"></div>
         <div class="card-content">
           <div class="card-header">
@@ -1609,6 +1613,9 @@ async function voteHelpful(id, btn) {
 
   const voteRef = db.collection('users').doc(currentUser.id).collection('votes').doc(id);
   const reviewRef = db.collection('reviews').doc(id);
+
+  // Skip the next onSnapshot re-render since we update locally
+  skipNextReviewRender = true;
 
   if (currentUserVotes.has(id)) {
     // Unvote — update local state immediately
@@ -2360,8 +2367,13 @@ if (firebaseReady) {
   // Real-time reviews listener
   db.collection('reviews').onSnapshot(snap => {
     reviews = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (skipNextReviewRender) {
+      skipNextReviewRender = false;
+      return;
+    }
     renderStats();
     renderReviews();
+    initialReviewsLoaded = true;
   });
 
   // Real-time users listener
