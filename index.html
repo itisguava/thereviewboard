@@ -1608,23 +1608,26 @@ async function voteHelpful(id, btn) {
   if (!r) return;
 
   const voteRef = db.collection('users').doc(currentUser.id).collection('votes').doc(id);
+  const reviewRef = db.collection('reviews').doc(id);
 
   if (currentUserVotes.has(id)) {
-    // Unvote
-    await voteRef.delete();
+    // Unvote — update local state immediately
     currentUserVotes.delete(id);
-    await db.collection('reviews').doc(id).update({
-      helpful: Math.max(0, (r.helpful || 0) - 1)
-    });
+    r.helpful = Math.max(0, (r.helpful || 0) - 1);
     btn.classList.remove('voted');
+    btn.querySelector('span').textContent = r.helpful;
+    // Then persist to Firestore
+    voteRef.delete();
+    reviewRef.update({ helpful: firebase.firestore.FieldValue.increment(-1) });
   } else {
-    // Vote
-    await voteRef.set({ votedAt: new Date().toISOString() });
+    // Vote — update local state immediately
     currentUserVotes.add(id);
-    await db.collection('reviews').doc(id).update({
-      helpful: (r.helpful || 0) + 1
-    });
+    r.helpful = (r.helpful || 0) + 1;
     btn.classList.add('voted');
+    btn.querySelector('span').textContent = r.helpful;
+    // Then persist to Firestore
+    voteRef.set({ votedAt: new Date().toISOString() });
+    reviewRef.update({ helpful: firebase.firestore.FieldValue.increment(1) });
   }
 }
 
