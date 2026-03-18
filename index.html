@@ -568,6 +568,95 @@ font-size: 0.58rem; font-weight: 600; letter-spacing: 0.5px;
 padding: 2px 8px; border-radius: 6px;
 display: inline-flex; align-items: center; gap: 3px;
 }
+/* Public profile */
+.pub-profile {
+max-width: 680px; margin: 0 auto; text-align: center;
+}
+.pub-profile-card {
+background: var(--bg-card);
+backdrop-filter: blur(20px) saturate(1.2);
+-webkit-backdrop-filter: blur(20px) saturate(1.2);
+border: 1px solid var(--border); border-radius: 24px;
+padding: 48px 40px 40px; position: relative; overflow: hidden;
+}
+.pub-profile-card::before {
+content: '';
+position: absolute; top: 0; left: 0; right: 0; height: 1px;
+background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+pointer-events: none; z-index: 1;
+}
+.pub-avatar-wrap {
+position: relative; display: inline-block; margin-bottom: 24px;
+}
+.pub-avatar {
+width: 120px; height: 120px; border-radius: 50%;
+background: var(--glass-bg); border: 3px solid var(--glass-border);
+display: flex; align-items: center; justify-content: center;
+font-size: 2.8rem; font-weight: 600; overflow: hidden;
+position: relative; z-index: 2;
+}
+.pub-avatar img {
+width: 100%; height: 100%; object-fit: cover; border-radius: 50%;
+}
+.pub-avatar-glow {
+position: absolute; inset: -8px; border-radius: 50%;
+background: conic-gradient(from 0deg, rgba(122,172,138,0.3), rgba(196,160,106,0.2), rgba(168,156,196,0.3), rgba(122,172,138,0.3));
+filter: blur(16px); opacity: 0.6; z-index: 1;
+animation: glowSpin 8s linear infinite;
+}
+@keyframes glowSpin {
+0% { transform: rotate(0deg); }
+100% { transform: rotate(360deg); }
+}
+.pub-avatar-ring {
+position: absolute; inset: -4px; border-radius: 50%;
+border: 2px solid rgba(255,255,255,0.08);
+z-index: 3; pointer-events: none;
+}
+.pub-username {
+font-family: var(--serif); font-size: 1.8rem;
+font-weight: 400; margin-bottom: 8px; letter-spacing: -0.01em;
+}
+.pub-badges {
+display: flex; gap: 6px; justify-content: center;
+flex-wrap: wrap; margin-bottom: 20px;
+}
+.pub-bio {
+color: var(--text-muted); font-size: 0.9rem; line-height: 1.7;
+max-width: 460px; margin: 0 auto 28px; font-weight: 300;
+}
+.pub-joined {
+font-family: var(--mono); font-size: 0.68rem;
+color: var(--text-dim); letter-spacing: 0.5px;
+margin-bottom: 28px;
+}
+.pub-stats {
+display: flex; gap: 32px; justify-content: center;
+padding-top: 24px; border-top: 1px solid var(--border);
+}
+.pub-stat { text-align: center; flex: 1; }
+.pub-stat-val {
+font-family: var(--mono); font-size: 1.6rem;
+font-weight: 300; color: var(--text); letter-spacing: -0.02em;
+}
+.pub-stat-lbl {
+font-size: 0.62rem; color: var(--text-dim);
+text-transform: uppercase; letter-spacing: 1.5px;
+margin-top: 2px;
+}
+.pub-reviews-section {
+margin-top: 40px; text-align: left;
+}
+.pub-reviews-label {
+font-family: var(--mono); font-size: 0.72rem; color: var(--text-dim);
+text-transform: uppercase; letter-spacing: 2px; margin-bottom: 20px;
+}
+.card-author-link {
+cursor: pointer; transition: color 0.2s;
+}
+.card-author-link:hover {
+color: var(--accent);
+}
 .banned-tag {
 font-size: 0.58rem; font-weight: 600; letter-spacing: 0.5px;
 color: var(--danger);
@@ -761,6 +850,33 @@ pointer-events: none;
 }
 .toast.show { transform: translateX(-50%) translateY(0); }
 .toast.error { border-color: rgba(196,106,106,0.3); color: var(--danger); }
+/* Footer */
+.site-footer {
+text-align: center; padding: 40px 20px 32px;
+position: relative; z-index: 1;
+}
+.site-footer a {
+font-family: var(--mono); font-size: 0.72rem;
+color: var(--text-dim); text-decoration: none;
+letter-spacing: 0.5px; transition: color 0.3s;
+}
+.site-footer a:hover {
+color: var(--accent);
+}
+/* Contact success */
+.contact-success {
+text-align: center; padding: 48px 20px;
+}
+.contact-success-icon {
+font-size: 2.4rem; margin-bottom: 16px;
+}
+.contact-success h3 {
+font-family: var(--serif); font-size: 1.4rem;
+font-weight: 400; margin-bottom: 8px;
+}
+.contact-success p {
+color: var(--text-muted); font-size: 0.88rem;
+}
 /* Responsive */
 @media (max-width: 768px) {
 header { padding: 0 20px; }
@@ -794,6 +910,7 @@ header.scrolled .header-inner { padding: 10px 16px; }
 <nav id="main-nav">
 <button data-view="browse" class="active">Browse</button>
 <button data-view="write">Write</button>
+<button data-view="contact">Contact</button>
 <button data-view="profile">Profile</button>
 </nav>
 <div class="auth-area" id="auth-area"></div>
@@ -840,7 +957,41 @@ header.scrolled .header-inner { padding: 10px 16px; }
 <div class="hero"><h1>Mod <em>Panel</em></h1><p>Manage reviews and users.</p></div>
 <div id="mod-content"></div>
 </div>
+
+<div id="user-profile-view" class="view">
+<div id="user-profile-content"></div>
+</div>
+
+<div id="contact-view" class="view">
+<div class="hero"><h1>Get in <em>Touch</em></h1><p>Questions, feedback, or just want to say hey — we'd love to hear from you.</p></div>
+<div class="form-container">
+<div class="form-inner">
+<div class="form-error" id="contact-error"></div>
+<div class="form-group">
+<label>Your Name</label>
+<input type="text" id="contact-name" placeholder="What should we call you?">
+</div>
+<div class="form-group">
+<label>Email</label>
+<input type="email" id="contact-email" placeholder="you@example.com">
+</div>
+<div class="form-group">
+<label>Subject</label>
+<input type="text" id="contact-subject" placeholder="What's this about?">
+</div>
+<div class="form-group">
+<label>Message</label>
+<textarea id="contact-message" placeholder="Tell us what's on your mind..."></textarea>
+</div>
+<button class="submit-btn" id="contact-submit-btn" onclick="handleContactSubmit()">Send Message</button>
+</div>
+</div>
+</div>
 </main>
+
+<footer class="site-footer">
+<a href="https://www.diabrowser.com" target="_blank" rel="noopener noreferrer">Proudly made with Dia</a>
+</footer>
 
 <div class="toast" id="toast"></div>
 
@@ -1014,6 +1165,7 @@ const EMAILJS_CONFIG = {
   publicKey: 'gMS-Uk3Qfkl-Jl_GH',
   serviceId: 'service_c15pdbn',
   templateId: 'template_ghr15gn',
+  contactTemplateId: 'template_xgpad8p',
 };
 
 const CATEGORIES = {
@@ -1530,6 +1682,91 @@ function switchView(viewName) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+function viewUserProfile(userId) {
+  const user = getUserById(userId);
+  if (!user) { showToast('User not found', true); return; }
+
+  const container = document.getElementById('user-profile-content');
+  const userReviews = reviews.filter(r => r.authorId === userId && !r.deleted);
+  const avgRating = userReviews.length
+    ? (userReviews.reduce((s, r) => s + r.rating, 0) / userReviews.length).toFixed(1)
+    : '—';
+  const totalHelpful = userReviews.reduce((s, r) => s + (r.helpful || 0), 0);
+  const roleBadge = getRoleBadgeHTML(user);
+  const userBadges = getBadgesHTML(user);
+  const avatarColor = getDefaultAvatarColor(user);
+  const avatarContent = user.avatar
+    ? `<img src="${esc(user.avatar)}" alt="">`
+    : `<span style="color:${avatarColor}">${getInitials(user.username)}</span>`;
+
+  const reviewCards = userReviews.sort((a, b) => new Date(b.date) - new Date(a.date)).map(r => {
+    const catInfo = CATEGORIES[r.category] || { label: r.category, cls: 'cat-other' };
+    return `
+      <div class="review-card no-anim">
+        <div class="card-sheen"></div>
+        <div class="card-content">
+          <div class="card-header">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div class="card-subject">${esc(r.subject)}</div>
+              ${r.pinned ? '<span class="card-pinned">Pinned</span>' : ''}
+              ${r.featured ? '<span class="card-featured">Featured</span>' : ''}
+            </div>
+            <span class="card-tag ${catInfo.cls}">${catInfo.label}</span>
+          </div>
+          <div class="card-rating">
+            <span class="card-stars">${stars(r.rating)}</span>
+            <span class="card-rating-num">${r.rating}.0 / 5.0</span>
+          </div>
+          <div class="card-body">${esc(r.body)}</div>
+          <div class="card-footer">
+            <span class="card-date">${timeAgo(r.date)}</span>
+            <button class="helpful-btn${currentUserVotes.has(r.id) ? ' voted' : ''}" onclick="voteHelpful('${r.id}', this)">
+              ▲ Helpful <span>${r.helpful || 0}</span>
+            </button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="pub-profile">
+      <div class="pub-profile-card">
+        <div class="pub-avatar-wrap">
+          <div class="pub-avatar-glow"></div>
+          <div class="pub-avatar">${avatarContent}</div>
+          <div class="pub-avatar-ring"></div>
+        </div>
+        <div class="pub-username">${esc(user.username)}</div>
+        <div class="pub-badges">${roleBadge} ${userBadges}</div>
+        ${user.bio ? `<div class="pub-bio">${esc(user.bio)}</div>` : ''}
+        <div class="pub-joined">Joined ${user.joined || 'Unknown'}</div>
+        <div class="pub-stats">
+          <div class="pub-stat">
+            <div class="pub-stat-val">${userReviews.length}</div>
+            <div class="pub-stat-lbl">Reviews</div>
+          </div>
+          <div class="pub-stat">
+            <div class="pub-stat-val">${avgRating}</div>
+            <div class="pub-stat-lbl">Avg Rating</div>
+          </div>
+          <div class="pub-stat">
+            <div class="pub-stat-val">${totalHelpful}</div>
+            <div class="pub-stat-lbl">Helpful Votes</div>
+          </div>
+        </div>
+      </div>
+      ${userReviews.length ? `
+        <div class="pub-reviews-section">
+          <div class="pub-reviews-label">Reviews by ${esc(user.username)} — ${userReviews.length}</div>
+          <div class="reviews-list">${reviewCards}</div>
+        </div>
+      ` : ''}
+    </div>
+  `;
+
+  switchView('user-profile');
+}
+
 document.querySelectorAll('#main-nav button').forEach(btn => {
   btn.addEventListener('click', () => switchView(btn.dataset.view));
 });
@@ -1626,7 +1863,7 @@ function renderReviews() {
           <div class="card-footer">
             <div class="card-meta">
               <span class="card-author">
-                <span class="card-author-badge">${avatarHTML} ${esc(authorName)} ${authorRoleBadge} ${authorBadges}</span>
+                <span class="card-author-badge card-author-link" onclick="event.stopPropagation();${r.authorId ? `viewUserProfile('${r.authorId}')` : ''}">${avatarHTML} ${esc(authorName)} ${authorRoleBadge} ${authorBadges}</span>
               </span>
               <span class="card-date">${timeAgo(r.date)}</span>
             </div>
@@ -2308,6 +2545,60 @@ async function modBulkDeleteUsers() {
   await batch.commit();
   selectedUserIds.clear();
   showToast(count + ' user' + (count !== 1 ? 's' : '') + ' deleted');
+}
+
+/* ============================================ */
+/* CONTACT FORM                                 */
+/* ============================================ */
+async function handleContactSubmit() {
+  const name = document.getElementById('contact-name').value.trim();
+  const email = document.getElementById('contact-email').value.trim();
+  const subject = document.getElementById('contact-subject').value.trim();
+  const message = document.getElementById('contact-message').value.trim();
+  const errEl = document.getElementById('contact-error');
+  errEl.style.display = 'none';
+
+  if (!name) { errEl.textContent = 'Please enter your name.'; errEl.style.display = 'block'; return; }
+  if (!email || !email.includes('@')) { errEl.textContent = 'Please enter a valid email.'; errEl.style.display = 'block'; return; }
+  if (!subject) { errEl.textContent = 'Please enter a subject.'; errEl.style.display = 'block'; return; }
+  if (!message) { errEl.textContent = 'Please enter a message.'; errEl.style.display = 'block'; return; }
+
+  const btn = document.getElementById('contact-submit-btn');
+  btn.textContent = 'Sending...';
+  btn.disabled = true;
+  btn.style.opacity = '0.6';
+
+  try {
+    await emailjs.send(
+      EMAILJS_CONFIG.serviceId,
+      EMAILJS_CONFIG.contactTemplateId,
+      {
+        from_name: name,
+        from_email: email,
+        subject: subject,
+        message: message,
+      },
+      { publicKey: EMAILJS_CONFIG.publicKey }
+    );
+
+    const container = document.querySelector('#contact-view .form-container');
+    container.innerHTML = `
+      <div class="form-inner">
+        <div class="contact-success">
+          <div class="contact-success-icon">&#10003;</div>
+          <h3>Message Sent</h3>
+          <p>Thanks for reaching out, ${esc(name)}. We'll get back to you soon.</p>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    console.error('Contact form error:', err);
+    errEl.textContent = 'Failed to send message. Please try again later.';
+    errEl.style.display = 'block';
+    btn.textContent = 'Send Message';
+    btn.disabled = false;
+    btn.style.opacity = '';
+  }
 }
 
 /* ============================================ */
