@@ -934,7 +934,7 @@ try {
     apiKey: "AIzaSyBYnwRR5ueWkUos76_CNv6E9FMxLYtC96o",
     authDomain: "the-review-board.firebaseapp.com",
     projectId: "the-review-board",
-    storageBucket: "the-review-board.appspot.com",
+    storageBucket: "the-review-board.firebasestorage.app",
     messagingSenderId: "737140035538",
     appId: "1:737140035538:web:033b4fc8f95a3967ddc20b"
   };
@@ -2283,28 +2283,60 @@ if (firebaseReady) {
   // Listen for auth state changes
   auth.onAuthStateChanged(async (firebaseUser) => {
     if (firebaseUser) {
-      const userDoc = await db.collection('users').doc(firebaseUser.uid).get();
-      if (userDoc.exists) {
-        currentUser = { id: firebaseUser.uid, ...userDoc.data() };
-        // Check if banned
-        if (currentUser.banned) {
-          await auth.signOut();
-          currentUser = null;
-          currentUserVotes = new Set();
-          showToast('This account has been banned.', true);
-        } else {
-          // Load user votes
-          const votesSnap = await db.collection('users').doc(firebaseUser.uid).collection('votes').get();
-          currentUserVotes = new Set(votesSnap.docs.map(d => d.id));
-          // Sync role from USER_ROLES config
-          const configRole = USER_ROLES[(currentUser.email || '').toLowerCase()];
-          if (configRole && configRole !== currentUser.role) {
-            currentUser.role = configRole;
+      try {
+        const userDoc = await db.collection('users').doc(firebaseUser.uid).get();
+        if (userDoc.exists) {
+          currentUser = { id: firebaseUser.uid, ...userDoc.data() };
+          if (currentUser.banned) {
+            await auth.signOut();
+            currentUser = null;
+            currentUserVotes = new Set();
+            showToast('This account has been banned.', true);
+          } else {
+            try {
+              const votesSnap = await db.collection('users').doc(firebaseUser.uid).collection('votes').get();
+              currentUserVotes = new Set(votesSnap.docs.map(d => d.id));
+            } catch(ve) {
+              console.warn('Could not load votes:', ve);
+              currentUserVotes = new Set();
+            }
+            const configRole = USER_ROLES[(currentUser.email || '').toLowerCase()];
+            if (configRole && configRole !== currentUser.role) {
+              currentUser.role = configRole;
+            }
           }
+        } else {
+          // User doc doesn't exist — auto-create from Firebase Auth profile
+          const newUserData = {
+            username: firebaseUser.displayName || firebaseUser.email.split('@')[0],
+            email: firebaseUser.email,
+            avatar: firebaseUser.photoURL || '',
+            bio: '',
+            joined: new Date().toISOString().slice(0, 10),
+            banned: false,
+            verified: PRE_VERIFIED_EMAILS.includes(firebaseUser.email.toLowerCase()),
+            verificationCode: null,
+          };
+          await db.collection('users').doc(firebaseUser.uid).set(newUserData);
+          currentUser = { id: firebaseUser.uid, ...newUserData };
+          currentUserVotes = new Set();
         }
-      } else {
-        currentUser = null;
+      } catch(e) {
+        console.error('Error loading user data:', e);
+        // Still set a minimal currentUser so the UI shows logged in
+        currentUser = {
+          id: firebaseUser.uid,
+          username: firebaseUser.displayName || firebaseUser.email.split('@')[0],
+          email: firebaseUser.email,
+          avatar: firebaseUser.photoURL || '',
+          bio: '',
+          joined: new Date().toISOString().slice(0, 10),
+          banned: false,
+          verified: false,
+          verificationCode: null,
+        };
         currentUserVotes = new Set();
+        showToast('Signed in (Firestore permissions may need setup)', true);
       }
     } else {
       currentUser = null;
