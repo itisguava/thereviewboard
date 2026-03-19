@@ -1074,13 +1074,27 @@ Already have an account? <a onclick="closeModal('register-modal');openModal('log
 <h2>Verify Email</h2>
 <div id="verify-status"></div>
 <div class="form-error" id="verify-error"></div>
+<div id="verify-change-email" style="display:none;">
+<div class="form-group">
+<label>New Email Address</label>
+<input type="email" id="verify-new-email" placeholder="corrected@email.com">
+</div>
+<div style="display:flex;gap:8px;">
+<button class="submit-btn" onclick="handleChangeVerifyEmail()" style="flex:1;">Update & Resend Code</button>
+<button class="submit-btn" onclick="toggleChangeEmail(false)" style="flex:0.6;background:var(--glass-bg);border:1px solid var(--glass-border);">Cancel</button>
+</div>
+</div>
+<div id="verify-code-section">
 <div class="form-group">
 <label>Verification Code</label>
 <input type="text" id="verify-code-input" placeholder="Enter 6-digit code" maxlength="6">
 </div>
 <button class="submit-btn" onclick="handleVerifyEmail()">Verify</button>
+</div>
 <div class="modal-footer">
 <a id="resend-link" onclick="resendVerificationCode()">Resend Code</a>
+<span style="margin:0 6px;color:var(--text-dim);">·</span>
+<a id="change-email-link" onclick="toggleChangeEmail(true)" style="cursor:pointer;color:var(--accent);font-size:0.82rem;">Wrong email?</a>
 <span id="resend-status" style="display:block;font-size:0.72rem;color:var(--text-dim);margin-top:4px;"></span>
 </div>
 </div>
@@ -1125,7 +1139,7 @@ const ROLE_COLORS = {
   curator: { color: '#85dcb8', bg: 'rgba(133,220,184,0.1)', label: 'Curator' },
 };
 
-const PRE_VERIFIED_EMAILS = ['tomasfoxshepard@gmail.com'];
+const PRE_VERIFIED_EMAILS = ['admin@thereviewboard.com'];
 const BLOCKED_DOMAINS = ['tempmail.com', 'throwaway.email', 'guerrillamail.com', 'mailinator.com', 'yopmail.com'];
 const DEFAULT_AVATAR_COLORS = ['#7aac8a', '#c4a06a', '#a89cc4', '#8ab4f8', '#e8a87c', '#85dcb8', '#c46a6a', '#f8c58a'];
 
@@ -1493,7 +1507,7 @@ async function sendVerificationEmail(code) {
         to_email: currentUser.email,
         to_name: currentUser.username,
         verification_code: code,
-        site_name: 'The ReviewBoard',
+        site_name: 'ReviewBoard',
       },
       { publicKey: EMAILJS_CONFIG.publicKey }
     );
@@ -1596,6 +1610,69 @@ async function resendVerificationCode() {
       statusEl.innerHTML = `<p style="font-size:0.82rem;color:var(--warm);">Could not send email. Please check your EmailJS configuration.</p>`;
     }
   });
+}
+
+function toggleChangeEmail(show) {
+  document.getElementById('verify-change-email').style.display = show ? 'block' : 'none';
+  document.getElementById('verify-code-section').style.display = show ? 'none' : 'block';
+  const errEl = document.getElementById('verify-error');
+  if (errEl) errEl.style.display = 'none';
+  if (show && currentUser) {
+    document.getElementById('verify-new-email').value = currentUser.email;
+    document.getElementById('verify-new-email').focus();
+  }
+}
+
+async function handleChangeVerifyEmail() {
+  if (!currentUser || !firebaseReady) return;
+  const newEmail = document.getElementById('verify-new-email').value.trim().toLowerCase();
+  const errEl = document.getElementById('verify-error');
+  errEl.style.display = 'none';
+
+  if (!newEmail || !newEmail.includes('@') || !newEmail.includes('.')) {
+    errEl.textContent = 'Please enter a valid email address.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (newEmail === currentUser.email) {
+    toggleChangeEmail(false);
+    return;
+  }
+
+  try {
+    // Update email in Firebase Auth
+    await auth.currentUser.updateEmail(newEmail);
+    // Update email in Firestore user doc
+    await db.collection('users').doc(currentUser.id).update({ email: newEmail });
+    // Update reviews with this author's email if stored
+    currentUser.email = newEmail;
+
+    // Generate new code and send to new email
+    const newCode = generateVerificationCode();
+    await db.collection('users').doc(currentUser.id).update({ verificationCode: newCode });
+    currentUser.verificationCode = newCode;
+
+    toggleChangeEmail(false);
+    const statusEl = document.getElementById('verify-status');
+    sendVerificationEmail(newCode).then(sent => {
+      if (sent) {
+        statusEl.innerHTML = `<p style="font-size:0.82rem;color:var(--accent);">✓ Email updated! New code sent to <strong>${esc(currentUser.email)}</strong></p>`;
+      } else {
+        statusEl.innerHTML = `<p style="font-size:0.82rem;color:var(--warm);">Email updated but could not send code. Try resending.</p>`;
+      }
+    });
+    showToast('Email updated to ' + newEmail);
+  } catch(e) {
+    console.error('Change email error:', e);
+    if (e.code === 'auth/email-already-in-use') {
+      errEl.textContent = 'This email is already in use by another account.';
+    } else if (e.code === 'auth/requires-recent-login') {
+      errEl.textContent = 'Please log out and log back in, then try again.';
+    } else {
+      errEl.textContent = e.message;
+    }
+    errEl.style.display = 'block';
+  }
 }
 
 function closeDropdown() {
