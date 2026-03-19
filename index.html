@@ -568,6 +568,19 @@ font-size: 0.58rem; font-weight: 600; letter-spacing: 0.5px;
 padding: 2px 8px; border-radius: 6px;
 display: inline-flex; align-items: center; gap: 3px;
 }
+.badge-visionary {
+background: linear-gradient(135deg, #ff6b6b, #ffa36b, #ffd86b, #6bffa3, #6bd4ff, #a36bff, #ff6bb5) !important;
+background-size: 300% 300% !important;
+animation: visionaryShift 4s ease infinite !important;
+color: #fff !important;
+text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+border: 1px solid rgba(255,255,255,0.2);
+}
+@keyframes visionaryShift {
+0% { background-position: 0% 50%; }
+50% { background-position: 100% 50%; }
+100% { background-position: 0% 50%; }
+}
 /* Public profile */
 .pub-profile {
 max-width: 680px; margin: 0 auto; text-align: center;
@@ -1147,6 +1160,7 @@ const ALL_BADGES = {
   vip:         { label: 'VIP',          color: '#e8c86a', bg: 'rgba(232,200,106,0.12)' },
   trusted:     { label: 'Trusted',      color: '#6ac48a', bg: 'rgba(106,196,138,0.1)' },
   champion:    { label: 'Champion',     color: '#e86a8a', bg: 'rgba(232,106,138,0.12)' },
+  visionary:   { label: 'Visionary',    color: '#fff',    bg: 'transparent', special: 'visionary' },
 };
 
 // Auto-earned badges based on activity score (reviews + helpful votes)
@@ -1271,7 +1285,8 @@ function getBadgesHTML(user) {
   if (!badges.length) return '';
   return badges.map(b => {
     const bd = ALL_BADGES[b];
-    return `<span class="activity-badge" style="color:${bd.color};background:${bd.bg}">${bd.label}</span>`;
+    const cls = bd.special ? `activity-badge badge-${bd.special}` : 'activity-badge';
+    return `<span class="${cls}" style="color:${bd.color};background:${bd.bg}">${bd.label}</span>`;
   }).join(' ');
 }
 
@@ -2266,7 +2281,7 @@ function renderModPanel() {
             ${!isSelf ? `
               <input type="text" class="mod-username-input" value="${esc(u.username)}" placeholder="Username" onchange="modChangeUsername('${u.id}', this.value)" style="width:120px;background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:8px;color:var(--text);font-family:var(--sans);font-size:0.76rem;padding:5px 10px;outline:none;">
               <select class="mod-role-select" onchange="modChangeRole('${u.id}', this.value)">${roleOptions}</select>
-              <select class="mod-badge-select" multiple size="3" onchange="modChangeBadges('${u.id}', this)" style="width:130px;background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:8px;color:var(--text);font-family:var(--sans);font-size:0.7rem;padding:4px;outline:none;">${badgeOptions}</select>
+              <select class="mod-badge-select" multiple size="8" onchange="modChangeBadges('${u.id}', this)" style="width:150px;background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:8px;color:var(--text);font-family:var(--sans);font-size:0.7rem;padding:4px;outline:none;">${badgeOptions}</select>
               <button class="mod-action-btn" onclick="modResetPassword('${u.id}')">Reset PW</button>
               <button class="mod-action-btn ${u.banned ? 'success' : 'danger'}" onclick="modToggleBan('${u.id}')">
                 ${u.banned ? 'Unban' : 'Ban'}
