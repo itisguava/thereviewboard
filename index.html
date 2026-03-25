@@ -2858,6 +2858,7 @@ let activeConvoType = null; // 'dm' | 'group'
 let msgListener = null;
 let convosListener = null;
 let pendingMsgImage = null;
+let cachedConvos = [];
 
 function renderMessagesView() {
   const container = document.getElementById('messages-content');
@@ -2868,9 +2869,9 @@ function renderMessagesView() {
   container.innerHTML = `<div class="msg-layout">
     <div class="msg-sidebar">
       <div class="msg-sidebar-tabs">
-        <button class="${msgTab==='dms'?'active':''}" onclick="msgTab='dms';activeConvoId=null;renderMessagesView()">DMs</button>
-        <button class="${msgTab==='groups'?'active':''}" onclick="msgTab='groups';activeConvoId=null;renderMessagesView()">Groups</button>
-        <button class="${msgTab==='friends'?'active':''}" onclick="msgTab='friends';activeConvoId=null;renderMessagesView()">Friends</button>
+        <button class="${msgTab==='dms'?'active':''}" onclick="switchMsgTab('dms')">DMs</button>
+        <button class="${msgTab==='groups'?'active':''}" onclick="switchMsgTab('groups')">Groups</button>
+        <button class="${msgTab==='friends'?'active':''}" onclick="switchMsgTab('friends')">Friends</button>
       </div>
       <div class="msg-sidebar-list" id="msg-sidebar-list"></div>
     </div>
@@ -2879,33 +2880,66 @@ function renderMessagesView() {
     </div>
   </div>`;
   loadSidebar();
+  // Start listening to all user conversations
+  listenToConversations();
 }
 
-async function loadSidebar() {
-  const list = document.getElementById('msg-sidebar-list');
-  if (!list || !currentUser) return;
-  if (msgTab === 'friends') { loadFriendsTab(list); return; }
-  if (msgTab === 'groups') { loadGroupsTab(list); return; }
-  loadDMsTab(list);
+function switchMsgTab(tab) {
+  msgTab = tab;
+  const tabBtns = document.querySelectorAll('.msg-sidebar-tabs button');
+  tabBtns.forEach(b => b.classList.remove('active'));
+  const activeBtn = [...tabBtns].find(b => b.textContent.toLowerCase() === (tab === 'dms' ? 'dms' : tab));
+  if (activeBtn) activeBtn.classList.add('active');
+  loadSidebar();
 }
 
-async function loadDMsTab(list) {
-  list.innerHTML = `<button class="msg-new-btn" onclick="showNewDMPicker()">+ New Message</button><div id="dm-list-items" style="opacity:0.5;font-size:0.72rem;color:var(--text-dim);padding:8px;">Loading...</div>`;
+function listenToConversations() {
   if (convosListener) convosListener();
+  if (!currentUser || !firebaseReady) return;
   convosListener = db.collection('conversations')
-    .where('type', '==', 'dm')
     .where('members', 'array-contains', currentUser.id)
-    .orderBy('lastMessageAt', 'desc')
     .onSnapshot(snap => {
-      const convos = snap.docs.map(d => ({id: d.id, ...d.data()}));
-      const itemsEl = document.getElementById('dm-list-items');
-      if (!itemsEl) return;
-      if (!convos.length) { itemsEl.innerHTML = '<p style="padding:12px;font-size:0.72rem;color:var(--text-dim);">No conversations yet.</p>'; return; }
-      itemsEl.innerHTML = convos.map(c => {
+      cachedConvos = snap.docs.map(d => ({id: d.id, ...d.data()}));
+      // Sort by lastMessageAt descending
+      cachedConvos.sort((a, b) => {
+        const ta = a.lastMessageAt ? (a.lastMessageAt.toDate ? a.lastMessageAt.toDate() : new Date(a.lastMessageAt)) : new Date(0);
+        const tb = b.lastMessageAt ? (b.lastMessageAt.toDate ? b.lastMessageAt.toDate() : new Date(b.lastMessageAt)) : new Date(0);
+        return tb - ta;
+      });
+      renderConvoList();
+    }, err => {
+      console.error('Conversations listener error:', err);
+      // Fallback: try simple query without ordering
+      db.collection('conversations')
+        .where('members', 'array-contains', currentUser.id)
+        .get().then(snap => {
+          cachedConvos = snap.docs.map(d => ({id: d.id, ...d.data()}));
+          renderConvoList();
+        }).catch(e => console.error('Fallback query failed:', e));
+    });
+}
+
+function renderConvoList() {
+  if (msgTab === 'friends') { loadFriendsTab(); return; }
+  const list = document.getElementById('msg-sidebar-list');
+  if (!list) return;
+
+  const type = msgTab === 'groups' ? 'group' : 'dm';
+  const filtered = cachedConvos.filter(c => c.type === type);
+  const btnLabel = type === 'dm' ? '+ New Message' : '+ New Group';
+  const btnAction = type === 'dm' ? 'showNewDMPicker()' : 'showNewGroupModal()';
+
+  let html = `<button class="msg-new-btn" onclick="${btnAction}">${btnLabel}</button>`;
+
+  if (!filtered.length) {
+    html += `<p style="padding:12px;font-size:0.72rem;color:var(--text-dim);">No ${type === 'dm' ? 'conversations' : 'groups'} yet.</p>`;
+  } else {
+    html += filtered.map(c => {
+      if (type === 'dm') {
         const otherId = c.members.find(m => m !== currentUser.id);
         const other = getUserById(otherId);
         const name = other ? other.username : 'Unknown';
-        const avatar = other ? getMsgAvatar(other, 36) : `<span>?</span>`;
+        const avatar = other ? getMsgAvatar(other, 36) : '<span>?</span>';
         const preview = c.lastMessage ? (c.lastMessage.length > 30 ? c.lastMessage.slice(0,30)+'…' : c.lastMessage) : '';
         const time = c.lastMessageAt ? formatMsgTime(c.lastMessageAt) : '';
         return `<div class="msg-convo-item ${activeConvoId===c.id?'active':''}" onclick="openConvo('${c.id}','dm')">
@@ -2913,23 +2947,7 @@ async function loadDMsTab(list) {
           <div class="msg-convo-info"><div class="msg-convo-name">${esc(name)}</div><div class="msg-convo-preview">${esc(preview)}</div></div>
           <div class="msg-convo-time">${time}</div>
         </div>`;
-      }).join('');
-    });
-}
-
-async function loadGroupsTab(list) {
-  list.innerHTML = `<button class="msg-new-btn" onclick="showNewGroupModal()">+ New Group</button><div id="group-list-items" style="opacity:0.5;font-size:0.72rem;color:var(--text-dim);padding:8px;">Loading...</div>`;
-  if (convosListener) convosListener();
-  convosListener = db.collection('conversations')
-    .where('type', '==', 'group')
-    .where('members', 'array-contains', currentUser.id)
-    .orderBy('lastMessageAt', 'desc')
-    .onSnapshot(snap => {
-      const convos = snap.docs.map(d => ({id: d.id, ...d.data()}));
-      const itemsEl = document.getElementById('group-list-items');
-      if (!itemsEl) return;
-      if (!convos.length) { itemsEl.innerHTML = '<p style="padding:12px;font-size:0.72rem;color:var(--text-dim);">No groups yet.</p>'; return; }
-      itemsEl.innerHTML = convos.map(c => {
+      } else {
         const preview = c.lastMessage ? (c.lastMessage.length > 30 ? c.lastMessage.slice(0,30)+'…' : c.lastMessage) : '';
         const time = c.lastMessageAt ? formatMsgTime(c.lastMessageAt) : '';
         return `<div class="msg-convo-item ${activeConvoId===c.id?'active':''}" onclick="openConvo('${c.id}','group')">
@@ -2937,52 +2955,66 @@ async function loadGroupsTab(list) {
           <div class="msg-convo-info"><div class="msg-convo-name">${esc(c.name||'Group')}</div><div class="msg-convo-preview">${esc(preview)}</div></div>
           <div class="msg-convo-time">${time}</div>
         </div>`;
-      }).join('');
-    });
+      }
+    }).join('');
+  }
+  list.innerHTML = html;
 }
 
-async function loadFriendsTab(list) {
-  list.innerHTML = '<div id="friends-list-content" style="padding:6px;">Loading...</div>';
-  const userDoc = await db.collection('users').doc(currentUser.id).get();
-  const friendIds = userDoc.data().friends || [];
-  const incoming = userDoc.data().friendRequests || [];
+async function loadSidebar() {
+  if (msgTab === 'friends') { loadFriendsTab(); return; }
+  renderConvoList();
+}
 
-  let html = `<button class="msg-new-btn" onclick="showAddFriendPicker()">+ Add Friend</button>`;
+async function loadFriendsTab() {
+  const list = document.getElementById('msg-sidebar-list');
+  if (!list || !currentUser) return;
+  list.innerHTML = '<div style="padding:6px;font-size:0.72rem;color:var(--text-dim);">Loading...</div>';
 
-  if (incoming.length) {
-    html += `<div style="font-size:0.68rem;color:var(--text-muted);padding:6px 8px;font-weight:600;margin-top:4px;">Friend Requests</div>`;
-    for (const fromId of incoming) {
-      const from = getUserById(fromId);
-      const name = from ? from.username : 'Unknown';
-      const avatar = from ? getMsgAvatar(from, 32) : '<span>?</span>';
-      html += `<div class="friend-req-item">
-        <div class="msg-avatar">${avatar}</div>
-        <div style="flex:1;min-width:0;"><div class="msg-convo-name">${esc(name)}</div></div>
-        <div class="friend-req-actions">
-          <button class="accept-btn" onclick="acceptFriend('${fromId}')">Accept</button>
-          <button class="decline-btn" onclick="declineFriend('${fromId}')">Decline</button>
-        </div>
-      </div>`;
+  try {
+    const userDoc = await db.collection('users').doc(currentUser.id).get();
+    const friendIds = userDoc.data().friends || [];
+    const incoming = userDoc.data().friendRequests || [];
+
+    let html = `<button class="msg-new-btn" onclick="showAddFriendPicker()">+ Add Friend</button>`;
+
+    if (incoming.length) {
+      html += `<div style="font-size:0.68rem;color:var(--text-muted);padding:6px 8px;font-weight:600;margin-top:4px;">Friend Requests</div>`;
+      for (const fromId of incoming) {
+        const from = getUserById(fromId);
+        const name = from ? from.username : 'Unknown';
+        const avatar = from ? getMsgAvatar(from, 32) : '<span>?</span>';
+        html += `<div class="friend-req-item">
+          <div class="msg-avatar">${avatar}</div>
+          <div style="flex:1;min-width:0;"><div class="msg-convo-name">${esc(name)}</div></div>
+          <div class="friend-req-actions">
+            <button class="accept-btn" onclick="acceptFriend('${fromId}')">Accept</button>
+            <button class="decline-btn" onclick="declineFriend('${fromId}')">Decline</button>
+          </div>
+        </div>`;
+      }
     }
-  }
 
-  if (friendIds.length) {
-    html += `<div style="font-size:0.68rem;color:var(--text-muted);padding:6px 8px;font-weight:600;margin-top:8px;">Your Friends</div>`;
-    for (const fid of friendIds) {
-      const f = getUserById(fid);
-      const name = f ? f.username : 'Unknown';
-      const avatar = f ? getMsgAvatar(f, 36) : '<span>?</span>';
-      html += `<div class="msg-convo-item" onclick="startDMWith('${fid}')">
-        <div class="msg-avatar">${avatar}</div>
-        <div class="msg-convo-info"><div class="msg-convo-name">${esc(name)}</div></div>
-        <button onclick="event.stopPropagation();removeFriend('${fid}')" style="background:none;border:none;color:var(--danger);font-size:0.65rem;cursor:pointer;">Remove</button>
-      </div>`;
+    if (friendIds.length) {
+      html += `<div style="font-size:0.68rem;color:var(--text-muted);padding:6px 8px;font-weight:600;margin-top:8px;">Your Friends</div>`;
+      for (const fid of friendIds) {
+        const f = getUserById(fid);
+        const name = f ? f.username : 'Unknown';
+        const avatar = f ? getMsgAvatar(f, 36) : '<span>?</span>';
+        html += `<div class="msg-convo-item" onclick="startDMWith('${fid}')">
+          <div class="msg-avatar">${avatar}</div>
+          <div class="msg-convo-info"><div class="msg-convo-name">${esc(name)}</div></div>
+          <button onclick="event.stopPropagation();removeFriend('${fid}')" style="background:none;border:none;color:var(--danger);font-size:0.65rem;cursor:pointer;">Remove</button>
+        </div>`;
+      }
+    } else if (!incoming.length) {
+      html += '<p style="padding:12px;font-size:0.72rem;color:var(--text-dim);">No friends yet. Add some!</p>';
     }
-  } else if (!incoming.length) {
-    html += '<p style="padding:12px;font-size:0.72rem;color:var(--text-dim);">No friends yet. Add some!</p>';
+    list.innerHTML = html;
+  } catch(e) {
+    console.error('Load friends error:', e);
+    list.innerHTML = '<p style="padding:12px;font-size:0.72rem;color:var(--danger);">Failed to load friends.</p>';
   }
-
-  document.getElementById('friends-list-content').innerHTML = html;
 }
 
 function getMsgAvatar(user, size) {
@@ -2992,75 +3024,97 @@ function getMsgAvatar(user, size) {
 
 function formatMsgTime(ts) {
   if (!ts) return '';
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
-  const now = new Date();
-  const diff = now - d;
-  if (diff < 60000) return 'now';
-  if (diff < 3600000) return Math.floor(diff/60000) + 'm';
-  if (diff < 86400000) return Math.floor(diff/3600000) + 'h';
-  if (diff < 604800000) return Math.floor(diff/86400000) + 'd';
-  return d.toLocaleDateString(undefined, {month:'short', day:'numeric'});
+  try {
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    if (isNaN(d.getTime())) return '';
+    const now = new Date();
+    const diff = now - d;
+    if (diff < 60000) return 'now';
+    if (diff < 3600000) return Math.floor(diff/60000) + 'm';
+    if (diff < 86400000) return Math.floor(diff/3600000) + 'h';
+    if (diff < 604800000) return Math.floor(diff/86400000) + 'd';
+    return d.toLocaleDateString(undefined, {month:'short', day:'numeric'});
+  } catch(e) { return ''; }
 }
 
 function formatMsgDate(ts) {
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
-  return d.toLocaleDateString(undefined, {weekday:'long', month:'long', day:'numeric'});
+  try {
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleDateString(undefined, {weekday:'long', month:'long', day:'numeric'});
+  } catch(e) { return ''; }
 }
 
 function formatMsgBubbleTime(ts) {
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
-  return d.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
+  try {
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
+  } catch(e) { return ''; }
 }
 
 /* ---- Friend actions ---- */
 async function sendFriendRequest(toId) {
   if (!currentUser || toId === currentUser.id) return;
-  await db.collection('users').doc(toId).update({
-    friendRequests: firebase.firestore.FieldValue.arrayUnion(currentUser.id)
-  });
-  showToast('Friend request sent!');
+  try {
+    await db.collection('users').doc(toId).update({
+      friendRequests: firebase.firestore.FieldValue.arrayUnion(currentUser.id)
+    });
+    showToast('Friend request sent!');
+  } catch(e) {
+    console.error('Send friend request error:', e);
+    showToast('Failed to send request', true);
+  }
 }
 
 async function acceptFriend(fromId) {
-  const batch = db.batch();
-  const myRef = db.collection('users').doc(currentUser.id);
-  const theirRef = db.collection('users').doc(fromId);
-  batch.update(myRef, {
-    friends: firebase.firestore.FieldValue.arrayUnion(fromId),
-    friendRequests: firebase.firestore.FieldValue.arrayRemove(fromId)
-  });
-  batch.update(theirRef, {
-    friends: firebase.firestore.FieldValue.arrayUnion(currentUser.id)
-  });
-  await batch.commit();
-  showToast('Friend added!');
-  loadSidebar();
+  try {
+    const batch = db.batch();
+    const myRef = db.collection('users').doc(currentUser.id);
+    const theirRef = db.collection('users').doc(fromId);
+    batch.update(myRef, {
+      friends: firebase.firestore.FieldValue.arrayUnion(fromId),
+      friendRequests: firebase.firestore.FieldValue.arrayRemove(fromId)
+    });
+    batch.update(theirRef, {
+      friends: firebase.firestore.FieldValue.arrayUnion(currentUser.id)
+    });
+    await batch.commit();
+    showToast('Friend added!');
+    loadFriendsTab();
+  } catch(e) {
+    console.error('Accept friend error:', e);
+    showToast('Failed to accept', true);
+  }
 }
 
 async function declineFriend(fromId) {
-  await db.collection('users').doc(currentUser.id).update({
-    friendRequests: firebase.firestore.FieldValue.arrayRemove(fromId)
-  });
-  showToast('Request declined');
-  loadSidebar();
+  try {
+    await db.collection('users').doc(currentUser.id).update({
+      friendRequests: firebase.firestore.FieldValue.arrayRemove(fromId)
+    });
+    showToast('Request declined');
+    loadFriendsTab();
+  } catch(e) { showToast('Failed', true); }
 }
 
 async function removeFriend(friendId) {
-  const batch = db.batch();
-  batch.update(db.collection('users').doc(currentUser.id), {
-    friends: firebase.firestore.FieldValue.arrayRemove(friendId)
-  });
-  batch.update(db.collection('users').doc(friendId), {
-    friends: firebase.firestore.FieldValue.arrayRemove(currentUser.id)
-  });
-  await batch.commit();
-  showToast('Friend removed');
-  loadSidebar();
+  try {
+    const batch = db.batch();
+    batch.update(db.collection('users').doc(currentUser.id), {
+      friends: firebase.firestore.FieldValue.arrayRemove(friendId)
+    });
+    batch.update(db.collection('users').doc(friendId), {
+      friends: firebase.firestore.FieldValue.arrayRemove(currentUser.id)
+    });
+    await batch.commit();
+    showToast('Friend removed');
+    loadFriendsTab();
+  } catch(e) { showToast('Failed', true); }
 }
 
 /* ---- New DM picker ---- */
 function showNewDMPicker() {
   const panel = document.getElementById('msg-panel');
+  if (!panel) return;
   const friendsList = users.filter(u => u.id !== currentUser.id && !u.banned);
   panel.innerHTML = `<div class="msg-panel-header"><div class="msg-panel-title">New Message</div></div>
     <div class="msg-messages" style="padding:12px;">
@@ -3086,34 +3140,52 @@ function filterDMPicker() {
 
 async function startDMWith(otherId) {
   if (!currentUser) return;
-  // Check if DM convo already exists
-  const existing = await db.collection('conversations')
-    .where('type', '==', 'dm')
-    .where('members', 'array-contains', currentUser.id)
-    .get();
-  let convoId = null;
-  existing.forEach(doc => {
-    const d = doc.data();
-    if (d.members.includes(otherId) && d.members.length === 2) convoId = doc.id;
-  });
-  if (!convoId) {
-    const ref = await db.collection('conversations').add({
-      type: 'dm',
-      members: [currentUser.id, otherId],
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      lastMessage: '',
-      lastMessageAt: firebase.firestore.FieldValue.serverTimestamp(),
-    });
-    convoId = ref.id;
+  try {
+    // Check if DM convo already exists in cache first
+    let convoId = null;
+    for (const c of cachedConvos) {
+      if (c.type === 'dm' && c.members.includes(otherId) && c.members.length === 2) {
+        convoId = c.id;
+        break;
+      }
+    }
+    // Fallback to Firestore query
+    if (!convoId) {
+      const existing = await db.collection('conversations')
+        .where('type', '==', 'dm')
+        .where('members', 'array-contains', currentUser.id)
+        .get();
+      existing.forEach(doc => {
+        const d = doc.data();
+        if (d.members.includes(otherId) && d.members.length === 2) convoId = doc.id;
+      });
+    }
+    if (!convoId) {
+      const ref = await db.collection('conversations').add({
+        type: 'dm',
+        members: [currentUser.id, otherId],
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        lastMessage: '',
+        lastMessageAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      convoId = ref.id;
+    }
+    msgTab = 'dms';
+    activeConvoId = convoId;
+    activeConvoType = 'dm';
+    renderMessagesView();
+    // Open convo after DOM is ready
+    setTimeout(() => openConvo(convoId, 'dm'), 100);
+  } catch(e) {
+    console.error('Start DM error:', e);
+    showToast('Failed to start conversation', true);
   }
-  msgTab = 'dms';
-  openConvo(convoId, 'dm');
-  renderMessagesView();
 }
 
 /* ---- Group creation ---- */
 function showNewGroupModal() {
   const panel = document.getElementById('msg-panel');
+  if (!panel) return;
   const friendsList = users.filter(u => u.id !== currentUser.id && !u.banned);
   panel.innerHTML = `<div class="msg-panel-header"><div class="msg-panel-title">Create Group</div></div>
     <div class="msg-messages" style="padding:12px;">
@@ -3133,24 +3205,33 @@ function showNewGroupModal() {
 }
 
 async function createGroup() {
-  const name = document.getElementById('new-group-name').value.trim();
+  const nameEl = document.getElementById('new-group-name');
+  if (!nameEl) return;
+  const name = nameEl.value.trim();
   if (!name) { showToast('Enter a group name', true); return; }
   const selected = [...document.querySelectorAll('#group-member-picker .msg-user-pick.selected')].map(el => el.dataset.uid);
   if (!selected.length) { showToast('Select at least one member', true); return; }
-  const members = [currentUser.id, ...selected];
-  const ref = await db.collection('conversations').add({
-    type: 'group',
-    name: name,
-    members: members,
-    createdBy: currentUser.id,
-    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-    lastMessage: '',
-    lastMessageAt: firebase.firestore.FieldValue.serverTimestamp(),
-  });
-  showToast('Group created!');
-  msgTab = 'groups';
-  openConvo(ref.id, 'group');
-  renderMessagesView();
+  try {
+    const members = [currentUser.id, ...selected];
+    const ref = await db.collection('conversations').add({
+      type: 'group',
+      name: name,
+      members: members,
+      createdBy: currentUser.id,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      lastMessage: '',
+      lastMessageAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    showToast('Group created!');
+    msgTab = 'groups';
+    activeConvoId = ref.id;
+    activeConvoType = 'group';
+    renderMessagesView();
+    setTimeout(() => openConvo(ref.id, 'group'), 100);
+  } catch(e) {
+    console.error('Create group error:', e);
+    showToast('Failed to create group', true);
+  }
 }
 
 /* ---- Open conversation ---- */
@@ -3159,6 +3240,8 @@ function openConvo(convoId, type) {
   activeConvoType = type;
   if (msgListener) msgListener();
   const panel = document.getElementById('msg-panel');
+  if (!panel) return;
+
   panel.innerHTML = `
     <div class="msg-panel-header" id="msg-convo-header">Loading...</div>
     <div class="msg-messages" id="msg-messages-list"></div>
@@ -3174,75 +3257,108 @@ function openConvo(convoId, type) {
       </button>
     </div>`;
 
+  // Update sidebar highlight
+  document.querySelectorAll('.msg-convo-item').forEach(el => el.classList.remove('active'));
+
   // Load convo header
-  db.collection('conversations').doc(convoId).get().then(doc => {
-    if (!doc.exists) return;
-    const convo = doc.data();
-    const headerEl = document.getElementById('msg-convo-header');
-    if (type === 'dm') {
-      const otherId = convo.members.find(m => m !== currentUser.id);
-      const other = getUserById(otherId);
-      const name = other ? other.username : 'Unknown';
-      const avatar = other ? getMsgAvatar(other, 32) : '<span>?</span>';
-      headerEl.innerHTML = `<div class="msg-avatar">${avatar}</div>
-        <div><div class="msg-panel-title">${esc(name)}</div></div>`;
-    } else {
-      headerEl.innerHTML = `<div class="msg-avatar" style="background:rgba(168,156,196,0.15);color:var(--mod-color);font-size:0.8rem;">${(convo.name||'G').charAt(0).toUpperCase()}</div>
-        <div><div class="msg-panel-title">${esc(convo.name||'Group')}</div>
-        <div class="msg-panel-subtitle">${convo.members.length} members</div></div>
-        <div class="msg-panel-actions">
-          <button onclick="showGroupMembers('${convoId}')">Members</button>
-          <button onclick="showAddToGroup('${convoId}')">Add</button>
-          <button onclick="leaveGroup('${convoId}')">Leave</button>
-        </div>`;
-    }
-  });
+  const convo = cachedConvos.find(c => c.id === convoId);
+  if (convo) {
+    renderConvoHeader(convo, type, convoId);
+  } else {
+    db.collection('conversations').doc(convoId).get().then(doc => {
+      if (!doc.exists) return;
+      renderConvoHeader(doc.data(), type, convoId);
+    });
+  }
 
   // Listen for messages
   const msgsEl = document.getElementById('msg-messages-list');
+  if (!msgsEl) return;
+
   msgListener = db.collection('conversations').doc(convoId)
     .collection('messages')
     .orderBy('sentAt', 'asc')
     .onSnapshot(snap => {
       const msgs = snap.docs.map(d => ({id: d.id, ...d.data()}));
-      let html = '';
-      let lastDate = '';
-      for (const m of msgs) {
-        if (m.sentAt) {
-          const d = m.sentAt.toDate ? m.sentAt.toDate() : new Date(m.sentAt);
-          const dateStr = d.toDateString();
-          if (dateStr !== lastDate) {
-            html += `<div class="msg-date-divider">${formatMsgDate(m.sentAt)}</div>`;
-            lastDate = dateStr;
-          }
-        }
-        const isOwn = m.senderId === currentUser.id;
-        const sender = getUserById(m.senderId);
-        const senderName = sender ? sender.username : 'Unknown';
-        const senderAvatar = sender ? getMsgAvatar(sender, 26) : '<span>?</span>';
-        const timeStr = m.sentAt ? formatMsgBubbleTime(m.sentAt) : '';
-        html += `<div class="msg-bubble-wrap ${isOwn ? 'own' : ''}">
-          <div class="msg-bubble-avatar">${senderAvatar}</div>
-          <div>
-            ${!isOwn && type === 'group' ? `<div class="msg-bubble-sender">${esc(senderName)}</div>` : ''}
-            <div class="msg-bubble">${m.imageUrl ? `<img class="msg-img" src="${esc(m.imageUrl)}" onclick="window.open(this.src)"><br>` : ''}${esc(m.text || '')}</div>
-            <div class="msg-bubble-time">${timeStr}</div>
-          </div>
-        </div>`;
-      }
-      if (!msgs.length) html = '<div class="msg-empty"><div><p style="color:var(--text-dim);font-size:0.78rem;">No messages yet. Say hello!</p></div></div>';
-      msgsEl.innerHTML = html;
-      msgsEl.scrollTop = msgsEl.scrollHeight;
+      renderMessages(msgs, type, msgsEl);
+    }, err => {
+      console.error('Messages listener error:', err);
+      // Fallback without ordering
+      db.collection('conversations').doc(convoId)
+        .collection('messages')
+        .get().then(snap => {
+          const msgs = snap.docs.map(d => ({id: d.id, ...d.data()}));
+          msgs.sort((a, b) => {
+            const ta = a.sentAt ? (a.sentAt.toDate ? a.sentAt.toDate() : new Date(a.sentAt)) : new Date(0);
+            const tb = b.sentAt ? (b.sentAt.toDate ? b.sentAt.toDate() : new Date(b.sentAt)) : new Date(0);
+            return ta - tb;
+          });
+          renderMessages(msgs, type, msgsEl);
+        });
     });
+}
 
-  // Update sidebar highlights
-  document.querySelectorAll('.msg-convo-item').forEach(el => el.classList.remove('active'));
+function renderConvoHeader(convo, type, convoId) {
+  const headerEl = document.getElementById('msg-convo-header');
+  if (!headerEl) return;
+  if (type === 'dm') {
+    const otherId = convo.members.find(m => m !== currentUser.id);
+    const other = getUserById(otherId);
+    const name = other ? other.username : 'Unknown';
+    const avatar = other ? getMsgAvatar(other, 32) : '<span>?</span>';
+    headerEl.innerHTML = `<div class="msg-avatar">${avatar}</div>
+      <div><div class="msg-panel-title">${esc(name)}</div></div>`;
+  } else {
+    headerEl.innerHTML = `<div class="msg-avatar" style="background:rgba(168,156,196,0.15);color:var(--mod-color);font-size:0.8rem;">${(convo.name||'G').charAt(0).toUpperCase()}</div>
+      <div><div class="msg-panel-title">${esc(convo.name||'Group')}</div>
+      <div class="msg-panel-subtitle">${convo.members.length} members</div></div>
+      <div class="msg-panel-actions">
+        <button onclick="showGroupMembers('${convoId}')">Members</button>
+        <button onclick="showAddToGroup('${convoId}')">Add</button>
+        <button onclick="leaveGroup('${convoId}')">Leave</button>
+      </div>`;
+  }
+}
+
+function renderMessages(msgs, type, msgsEl) {
+  if (!msgsEl) return;
+  let html = '';
+  let lastDate = '';
+  for (const m of msgs) {
+    if (m.sentAt) {
+      try {
+        const d = m.sentAt.toDate ? m.sentAt.toDate() : new Date(m.sentAt);
+        const dateStr = d.toDateString();
+        if (dateStr !== lastDate) {
+          html += `<div class="msg-date-divider">${formatMsgDate(m.sentAt)}</div>`;
+          lastDate = dateStr;
+        }
+      } catch(e) {}
+    }
+    const isOwn = m.senderId === currentUser.id;
+    const sender = getUserById(m.senderId);
+    const senderName = sender ? sender.username : 'Unknown';
+    const senderAvatar = sender ? getMsgAvatar(sender, 26) : '<span>?</span>';
+    const timeStr = m.sentAt ? formatMsgBubbleTime(m.sentAt) : '';
+    html += `<div class="msg-bubble-wrap ${isOwn ? 'own' : ''}">
+      <div class="msg-bubble-avatar">${senderAvatar}</div>
+      <div>
+        ${!isOwn && type === 'group' ? `<div class="msg-bubble-sender">${esc(senderName)}</div>` : ''}
+        <div class="msg-bubble">${m.imageUrl ? `<img class="msg-img" src="${esc(m.imageUrl)}" onclick="window.open(this.src)"><br>` : ''}${esc(m.text || '')}</div>
+        <div class="msg-bubble-time">${timeStr}</div>
+      </div>
+    </div>`;
+  }
+  if (!msgs.length) html = '<div class="msg-empty"><div><p style="color:var(--text-dim);font-size:0.78rem;">No messages yet. Say hello!</p></div></div>';
+  msgsEl.innerHTML = html;
+  msgsEl.scrollTop = msgsEl.scrollHeight;
 }
 
 /* ---- Send message ---- */
 async function sendMessage() {
   if (!activeConvoId || !currentUser) return;
   const input = document.getElementById('msg-input');
+  if (!input) return;
   const text = input.value.trim();
   if (!text && !pendingMsgImage) return;
 
@@ -3260,22 +3376,27 @@ async function sendMessage() {
       showToast('Image upload failed', true);
     }
     pendingMsgImage = null;
-    document.getElementById('msg-img-preview').style.display = 'none';
-    document.getElementById('msg-img-preview').innerHTML = '';
+    const preview = document.getElementById('msg-img-preview');
+    if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
   }
 
-  const msgData = {
-    senderId: currentUser.id,
-    text: text,
-    sentAt: firebase.firestore.FieldValue.serverTimestamp(),
-  };
-  if (imageUrl) msgData.imageUrl = imageUrl;
+  try {
+    const msgData = {
+      senderId: currentUser.id,
+      text: text,
+      sentAt: firebase.firestore.FieldValue.serverTimestamp(),
+    };
+    if (imageUrl) msgData.imageUrl = imageUrl;
 
-  await db.collection('conversations').doc(activeConvoId).collection('messages').add(msgData);
-  await db.collection('conversations').doc(activeConvoId).update({
-    lastMessage: imageUrl ? (text || '📷 Image') : text,
-    lastMessageAt: firebase.firestore.FieldValue.serverTimestamp(),
-  });
+    await db.collection('conversations').doc(activeConvoId).collection('messages').add(msgData);
+    await db.collection('conversations').doc(activeConvoId).update({
+      lastMessage: imageUrl ? (text || '📷 Image') : text,
+      lastMessageAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch(e) {
+    console.error('Send message error:', e);
+    showToast('Failed to send message', true);
+  }
 }
 
 /* ---- Image handling ---- */
@@ -3287,8 +3408,10 @@ function handleMsgImageSelect(input) {
   const reader = new FileReader();
   reader.onload = (e) => {
     const preview = document.getElementById('msg-img-preview');
-    preview.style.display = 'flex';
-    preview.innerHTML = `<img src="${e.target.result}"><button onclick="cancelMsgImage()">✕ Remove</button>`;
+    if (preview) {
+      preview.style.display = 'flex';
+      preview.innerHTML = `<img src="${e.target.result}"><button onclick="cancelMsgImage()">✕ Remove</button>`;
+    }
   };
   reader.readAsDataURL(file);
   input.value = '';
@@ -3297,84 +3420,88 @@ function handleMsgImageSelect(input) {
 function cancelMsgImage() {
   pendingMsgImage = null;
   const preview = document.getElementById('msg-img-preview');
-  preview.style.display = 'none';
-  preview.innerHTML = '';
+  if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
 }
 
 /* ---- Group management ---- */
 async function showGroupMembers(convoId) {
-  const doc = await db.collection('conversations').doc(convoId).get();
-  if (!doc.exists) return;
-  const members = doc.data().members || [];
-  const panel = document.getElementById('msg-messages-list');
+  const convo = cachedConvos.find(c => c.id === convoId);
+  const members = convo ? convo.members : [];
+  const msgsEl = document.getElementById('msg-messages-list');
+  if (!msgsEl) return;
   let html = '<div style="padding:8px;"><div style="font-size:0.78rem;font-weight:600;margin-bottom:10px;color:var(--text-muted);">Group Members</div>';
   for (const mid of members) {
     const m = getUserById(mid);
     const name = m ? m.username : 'Unknown';
     const avatar = m ? getMsgAvatar(m, 32) : '<span>?</span>';
-    const isCreator = doc.data().createdBy === mid;
+    const isCreator = convo && convo.createdBy === mid;
     html += `<div class="msg-user-pick">
       <div class="msg-avatar" style="width:32px;height:32px;">${avatar}</div>
       <span style="font-size:0.78rem;">${esc(name)}${isCreator ? ' <span style="color:var(--warm);font-size:0.6rem;">Creator</span>' : ''}</span>
     </div>`;
   }
-  html += '</div>';
-  panel.innerHTML = html;
+  html += '<button class="msg-new-btn" onclick="openConvo(\'' + convoId + '\',\'group\')" style="margin-top:8px;">← Back to chat</button></div>';
+  msgsEl.innerHTML = html;
 }
 
 function showAddToGroup(convoId) {
-  db.collection('conversations').doc(convoId).get().then(doc => {
-    if (!doc.exists) return;
-    const existing = doc.data().members || [];
-    const available = users.filter(u => !existing.includes(u.id) && !u.banned && u.id !== currentUser.id);
-    const panel = document.getElementById('msg-messages-list');
-    panel.innerHTML = `<div style="padding:8px;">
-      <div style="font-size:0.78rem;font-weight:600;margin-bottom:10px;color:var(--text-muted);">Add Members</div>
-      <div id="add-group-picker">${available.length ? available.map(u => `
-        <div class="msg-user-pick" onclick="this.classList.toggle('selected')" data-uid="${u.id}">
-          <div class="msg-avatar" style="width:28px;height:28px;">${getMsgAvatar(u, 28)}</div>
-          <span style="font-size:0.78rem;">${esc(u.username)}</span>
-        </div>`).join('') : '<p style="font-size:0.72rem;color:var(--text-dim);">No users to add.</p>'}
-      </div>
-      ${available.length ? `<button class="submit-btn" onclick="addMembersToGroup('${convoId}')" style="margin-top:10px;">Add Selected</button>` : ''}
-    </div>`;
-  });
+  const convo = cachedConvos.find(c => c.id === convoId);
+  const existing = convo ? convo.members : [];
+  const available = users.filter(u => !existing.includes(u.id) && !u.banned && u.id !== currentUser.id);
+  const msgsEl = document.getElementById('msg-messages-list');
+  if (!msgsEl) return;
+  msgsEl.innerHTML = `<div style="padding:8px;">
+    <div style="font-size:0.78rem;font-weight:600;margin-bottom:10px;color:var(--text-muted);">Add Members</div>
+    <div id="add-group-picker">${available.length ? available.map(u => `
+      <div class="msg-user-pick" onclick="this.classList.toggle('selected')" data-uid="${u.id}">
+        <div class="msg-avatar" style="width:28px;height:28px;">${getMsgAvatar(u, 28)}</div>
+        <span style="font-size:0.78rem;">${esc(u.username)}</span>
+      </div>`).join('') : '<p style="font-size:0.72rem;color:var(--text-dim);">No users to add.</p>'}
+    </div>
+    ${available.length ? `<button class="submit-btn" onclick="addMembersToGroup('${convoId}')" style="margin-top:10px;">Add Selected</button>` : ''}
+    <button class="msg-new-btn" onclick="openConvo('${convoId}','group')" style="margin-top:8px;">← Back to chat</button>
+  </div>`;
 }
 
 async function addMembersToGroup(convoId) {
   const selected = [...document.querySelectorAll('#add-group-picker .msg-user-pick.selected')].map(el => el.dataset.uid);
   if (!selected.length) { showToast('Select members to add', true); return; }
-  await db.collection('conversations').doc(convoId).update({
-    members: firebase.firestore.FieldValue.arrayUnion(...selected)
-  });
-  showToast(selected.length + ' member(s) added');
-  openConvo(convoId, 'group');
+  try {
+    await db.collection('conversations').doc(convoId).update({
+      members: firebase.firestore.FieldValue.arrayUnion(...selected)
+    });
+    showToast(selected.length + ' member(s) added');
+    openConvo(convoId, 'group');
+  } catch(e) { showToast('Failed to add members', true); }
 }
 
 async function leaveGroup(convoId) {
-  await db.collection('conversations').doc(convoId).update({
-    members: firebase.firestore.FieldValue.arrayRemove(currentUser.id)
-  });
-  activeConvoId = null;
-  showToast('Left group');
-  renderMessagesView();
+  try {
+    await db.collection('conversations').doc(convoId).update({
+      members: firebase.firestore.FieldValue.arrayRemove(currentUser.id)
+    });
+    activeConvoId = null;
+    showToast('Left group');
+    renderMessagesView();
+  } catch(e) { showToast('Failed to leave group', true); }
 }
 
 /* ---- Add friend picker ---- */
 function showAddFriendPicker() {
-  const list = document.getElementById('friends-list-content');
+  const list = document.getElementById('msg-sidebar-list');
+  if (!list) return;
   const available = users.filter(u => u.id !== currentUser.id && !u.banned);
-  list.innerHTML = `<div style="margin-bottom:8px;">
+  list.innerHTML = `<div style="margin-bottom:8px;padding:6px;">
     <input type="text" id="friend-search" placeholder="Search users..." oninput="filterFriendPicker()" style="width:100%;background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:10px;color:var(--text);padding:8px 12px;font-size:0.78rem;font-family:var(--sans);outline:none;">
   </div>
-  <div id="friend-picker-list">${available.map(u => `
+  <div id="friend-picker-list" style="padding:0 6px;">${available.map(u => `
     <div class="msg-user-pick" data-name="${esc(u.username.toLowerCase())}">
       <div class="msg-avatar" style="width:32px;height:32px;border-radius:50%;background:var(--glass-bg);border:1px solid var(--glass-border);display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:600;overflow:hidden;">${getMsgAvatar(u, 32)}</div>
       <span style="font-size:0.78rem;flex:1;">${esc(u.username)}</span>
       <button onclick="event.stopPropagation();sendFriendRequest('${u.id}')" style="padding:4px 10px;border-radius:6px;border:none;background:var(--accent);color:#fff;font-size:0.68rem;font-family:var(--sans);cursor:pointer;font-weight:600;">Add</button>
     </div>`).join('')}
   </div>
-  <button class="msg-new-btn" onclick="loadSidebar()" style="margin-top:8px;">← Back</button>`;
+  <div style="padding:6px;"><button class="msg-new-btn" onclick="loadFriendsTab()">← Back</button></div>`;
 }
 
 function filterFriendPicker() {
@@ -3388,7 +3515,7 @@ function filterFriendPicker() {
 /* ---- Profile page: message & friend buttons ---- */
 function sendMessageFromProfile(userId) {
   switchView('messages');
-  setTimeout(() => startDMWith(userId), 300);
+  setTimeout(() => startDMWith(userId), 500);
 }
 
 function sendFriendRequestFromProfile(userId) {
