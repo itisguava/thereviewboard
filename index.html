@@ -1062,7 +1062,7 @@ header.scrolled .header-inner { padding: 10px 16px; }
 
 <header id="header">
 <div class="header-inner">
-<div class="logo" onclick="switchView('browse')">SBolo<em>0105</em></div>
+<div class="logo" onclick="switchView('browse')">Review<em>Board</em></div>
 <nav id="main-nav">
 <button data-view="browse" class="active">Browse</button>
 <button data-view="write">Write</button>
@@ -3149,15 +3149,14 @@ async function startDMWith(otherId) {
         break;
       }
     }
-    // Fallback to Firestore query
+    // Fallback to Firestore query (single field only — no composite index needed)
     if (!convoId) {
       const existing = await db.collection('conversations')
-        .where('type', '==', 'dm')
         .where('members', 'array-contains', currentUser.id)
         .get();
       existing.forEach(doc => {
         const d = doc.data();
-        if (d.members.includes(otherId) && d.members.length === 2) convoId = doc.id;
+        if (d.type === 'dm' && d.members.includes(otherId) && d.members.length === 2) convoId = doc.id;
       });
     }
     if (!convoId) {
