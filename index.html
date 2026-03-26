@@ -1443,6 +1443,7 @@ Respond with this exact JSON structure:
     };
   } catch(err) {
     console.warn('OpenAI moderation failed, using heuristic fallback:', err);
+    showToast('AI moderation unavailable — using basic filter', true);
     return heuristicModerate(subject, body, rating, category);
   }
 }
@@ -1463,6 +1464,13 @@ function heuristicModerate(subject, body, rating, category) {
   const chatPatterns = /\b(gorp|skibidi|rizz|gyatt|sigma|ohio|fanum tax|sussy|baka|uwu|owo|brainrot|pog|copium|bussin|yeet|sus|deez|ligma|amogus|shitpost)\b/i;
   if (chatPatterns.test(bodyLower) || chatPatterns.test(subjectLower)) { score += 4; reasons.push('Meme/spam language'); }
   if (/\b(say|type|put|write|spam)\b.{0,15}\b(in the|in chat|in comments|below)\b/i.test(bodyLower)) { score += 5; reasons.push('Call-to-action spam'); }
+  /* Inappropriate / offensive content check */
+  const profanityPatterns = /\b(f+u+c+k+|sh+i+t+|a+ss+h+o+l+e|b+i+t+c+h+|d+i+c+k+|c+u+n+t+|n+i+g+g+|f+a+g+|r+e+t+a+r+d|wh+o+r+e|sl+u+t+|p+u+ss+y+|cock|jerk\s*off|jack\s*off|blow\s*job|hand\s*job)\b/i;
+  const explicitPatterns = /\b(porn|hentai|xxx|nude|naked|sex\s*tape|onlyfans|nsfw)\b/i;
+  const violencePatterns = /\b(kill\s*(your|my|him|her|them|ur)self|kys\b|die\b.*\b(trash|loser|idiot)|shoot\s*up|bomb\s*threat)/i;
+  if (profanityPatterns.test(bodyLower) || profanityPatterns.test(subjectLower)) { score += 5; reasons.push('Profanity/offensive language'); }
+  if (explicitPatterns.test(bodyLower) || explicitPatterns.test(subjectLower)) { score += 5; reasons.push('Explicit/NSFW content'); }
+  if (violencePatterns.test(bodyLower) || violencePatterns.test(subjectLower)) { score += 6; reasons.push('Violent/threatening language'); }
   const urlCount = (body.match(/https?:\/\/\S+/g) || []).length;
   if (urlCount >= 2) { score += 3; reasons.push('Multiple URLs'); }
   if (words.length >= 8 && uniqueWords.size < words.length * 0.4) { score += 2; reasons.push('Low word diversity'); }
