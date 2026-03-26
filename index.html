@@ -1392,7 +1392,7 @@ function aiModerateReview(subject, body, rating, category) {
   if (emojiCount > 5) { score += 3; reasons.push('Excessive emojis'); }
 
   /* Chat/meme language patterns */
-  const chatPatterns = /\b(gorp|skibidi|rizz|gyatt|sigma|ohio|fanum tax|sussy|baka|uwu|owo|brainrot|pog|copium|no cap fr fr|bussin|yeet|sus|deez|ligma|amogus|shitpost)\b/i;
+  const chatPatterns = /\b(gorp|goon|balls|skibidi|rizz|gyatt|sigma|ohio|fanum tax|sussy|baka|uwu|owo|brainrot|pog|copium|no cap fr fr|bussin|yeet|sus|deez|ligma|amogus|shitpost)\b/i;
   if (chatPatterns.test(bodyLower) || chatPatterns.test(subjectLower)) { score += 4; reasons.push('Contains meme/spam language'); }
 
   /* "Say X in the chat" or call-to-action spam */
