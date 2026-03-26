@@ -1424,7 +1424,7 @@ Respond with this exact JSON structure:
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + openaiApiKey },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5',
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.1,
         max_tokens: 200,
@@ -1471,7 +1471,7 @@ function heuristicModerate(subject, body, rating, category) {
   if (/\b(say|type|put|write|spam)\b.{0,15}\b(in the|in chat|in comments|below)\b/i.test(bodyLower)) { score += 5; reasons.push('Call-to-action spam'); }
   /* Inappropriate / offensive content check */
   const profanityPatterns = /\b(f+u+c+k+|sh+i+t+|a+ss+h+o+l+e|b+i+t+c+h+|d+i+c+k+|c+u+n+t+|n+i+g+g+|f+a+g+|r+e+t+a+r+d|wh+o+r+e|sl+u+t+|p+u+ss+y+|cock|jerk\s*off|jack\s*off|blow\s*job|hand\s*job)\b/i;
-  const explicitPatterns = /\b(porn|hentai|xxx|nude|naked|sex\s*tape|onlyfans|nsfw)\b/i;
+  const explicitPatterns = /\b(porn|hentai|xxx|nude|naked|sex\s*tape|onlyfans|nsfw|goon|gooning|gooner|goonin)\b/i;
   const violencePatterns = /\b(kill\s*(your|my|him|her|them|ur)self|kys\b|die\b.*\b(trash|loser|idiot)|shoot\s*up|bomb\s*threat)/i;
   if (profanityPatterns.test(bodyLower) || profanityPatterns.test(subjectLower)) { score += 5; reasons.push('Profanity/offensive language'); }
   if (explicitPatterns.test(bodyLower) || explicitPatterns.test(subjectLower)) { score += 5; reasons.push('Explicit/NSFW content'); }
@@ -2953,7 +2953,7 @@ function renderModSettingsTab(tabContent) {
   tabContent.innerHTML = `
     <div class="mod-settings-section">
       <h4>AI Moderation (OpenAI)</h4>
-      <div style="font-size:0.68rem;color:var(--text-dim);margin-bottom:10px;">Uses GPT-4o-mini to evaluate every review for spam, quality, and interest. Without an API key, a basic heuristic fallback is used instead.</div>
+      <div style="font-size:0.68rem;color:var(--text-dim);margin-bottom:10px;">Uses GPT-5 to evaluate every review for spam, quality, and interest. Without an API key, a basic heuristic fallback is used instead.</div>
       <div class="form-group"><label>OpenAI API Key</label><input type="password" id="openai-key-input" value="${esc(openaiApiKey)}" placeholder="sk-..."></div>
       <div class="mod-edit-row" style="align-items:center;gap:12px;margin-top:8px;">
         <button class="save-btn" onclick="saveOpenAIKey()">Save Key</button>
@@ -3016,10 +3016,10 @@ async function testOpenAIKey() {
   const key = document.getElementById('openai-key-input').value.trim();
   if (!key) { showToast('Enter an API key first', true); return; }
   try {
-    const res = await fetch('https://api.openai.com/v1/models/gpt-4o-mini', {
+    const res = await fetch('https://api.openai.com/v1/models/gpt-5', {
       headers: { 'Authorization': 'Bearer ' + key },
     });
-    if (res.ok) showToast('Connection successful — GPT-4o-mini is accessible');
+    if (res.ok) showToast('Connection successful — GPT-5 is accessible');
     else if (res.status === 401) showToast('Invalid API key', true);
     else showToast('API error: ' + res.status, true);
   } catch(e) { showToast('Connection failed: ' + e.message, true); }
