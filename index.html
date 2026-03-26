@@ -320,6 +320,18 @@ from { opacity: 0; transform: translateY(20px); }
 to { opacity: 1; transform: translateY(0); }
 }
 .review-card.no-anim { animation: none !important; }
+.review-card.mod-draggable { position: relative; }
+.review-card.dragging { opacity: 0.4; transform: scale(0.98); border-color: var(--accent); }
+.review-card.drag-over { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow), 0 8px 30px rgba(0,0,0,0.2); transform: translateY(-2px); }
+.drag-handle {
+  position: absolute; top: 12px; left: 12px; z-index: 2;
+  font-size: 1rem; color: var(--text-dim); cursor: grab;
+  opacity: 0; transition: opacity 0.2s;
+  user-select: none; line-height: 1;
+}
+.drag-handle:active { cursor: grabbing; }
+.review-card.mod-draggable:hover .drag-handle { opacity: 0.6; }
+.review-card.mod-draggable:hover .drag-handle:hover { opacity: 1; color: var(--accent); }
 .review-card:hover {
 border-color: var(--border-light);
 transform: translateY(-2px);
@@ -1138,6 +1150,19 @@ Already have an account? <a onclick="closeModal('register-modal');openModal('log
 </div>
 </div>
 
+<!-- Confirm Delete Modal -->
+<div class="modal-overlay" id="confirm-delete-modal">
+<div class="modal" style="max-width:400px;text-align:center;">
+<button class="modal-close" onclick="closeModal('confirm-delete-modal')">&times;</button>
+<h2 style="color:var(--danger);">Delete Review?</h2>
+<p style="font-size:0.85rem;color:var(--text-muted);margin:12px 0 20px;">This will <strong>permanently delete</strong> "<span id="confirm-delete-subject"></span>". This cannot be undone.</p>
+<div style="display:flex;gap:10px;justify-content:center;">
+<button class="submit-btn" style="background:var(--danger);padding:10px 24px;" onclick="executeConfirmedDelete()">Yes, Delete Forever</button>
+<button class="submit-btn" style="background:var(--glass-bg);color:var(--text-muted);border:1px solid var(--border);padding:10px 24px;" onclick="closeModal('confirm-delete-modal')">Cancel</button>
+</div>
+</div>
+</div>
+
 <!-- Verification Modal -->
 <div class="modal-overlay" id="verify-modal">
 <div class="modal">
@@ -1398,6 +1423,63 @@ function aiModerateReview(subject, body, rating, category) {
   else { level = 1; label = 'Clean'; }
 
   return { level, score, reasons, label };
+}
+
+/* ============================================ */
+/* AI INTEREST SCORER                           */
+/* Scores 0-100: higher = more interesting      */
+/* Used to auto-sort reviews on Browse          */
+/* ============================================ */
+function aiScoreInterest(subject, body, rating, category) {
+  let score = 50; /* baseline */
+  const words = body.split(/\s+/).filter(w => w.length > 0);
+  const uniqueWords = new Set(words.map(w => w.toLowerCase()));
+  const bodyLower = body.toLowerCase();
+
+  /* Length — longer, more detailed reviews are more interesting */
+  if (words.length >= 80) score += 15;
+  else if (words.length >= 40) score += 10;
+  else if (words.length >= 20) score += 5;
+  else if (words.length < 10) score -= 10;
+
+  /* Vocabulary richness */
+  if (words.length >= 6) {
+    const diversity = uniqueWords.size / words.length;
+    if (diversity > 0.7) score += 8;
+    else if (diversity < 0.3) score -= 10;
+  }
+
+  /* Contains specific details (numbers, proper nouns, comparisons) */
+  if (/\d+(\.\d+)?(%|\/| out of| stars?)/.test(body)) score += 5;
+  if ((body.match(/[A-Z][a-z]{2,}/g) || []).length >= 3) score += 3;
+
+  /* Expresses strong opinions — more engaging */
+  const strongOpinions = /\b(absolutely|incredible|unbelievable|phenomenal|devastating|exceptional|spectacular|disastrous|brilliant|atrocious|masterpiece|garbage|flawless|dreadful)\b/i;
+  if (strongOpinions.test(bodyLower)) score += 8;
+
+  /* Balanced review (mentions both pros and cons) */
+  const hasPositive = /\b(good|great|love|excellent|amazing|best|enjoy|recommend|solid|fantastic|perfect)\b/i.test(bodyLower);
+  const hasNegative = /\b(bad|terrible|hate|awful|worst|disappoint|avoid|poor|weak|horrible|mediocre)\b/i.test(bodyLower);
+  if (hasPositive && hasNegative) score += 10;
+
+  /* Contains structure (paragraphs, lists, or multiple sentences) */
+  const sentenceCount = (body.match(/[.!?]+\s/g) || []).length + 1;
+  if (sentenceCount >= 4) score += 8;
+  else if (sentenceCount <= 1) score -= 5;
+
+  /* Rating extremes are more interesting than middle-of-the-road */
+  if (rating === 1 || rating === 5) score += 5;
+  else if (rating === 3) score -= 3;
+
+  /* Helpful votes boost interest (if already has some) */
+  /* (this runs at submission so helpful will be 0, but re-scoring later uses it) */
+
+  /* Penalize very generic/boring text */
+  const genericPhrases = /\b(it was okay|it was fine|pretty good|not bad|could be better|nothing special|it is what it is)\b/i;
+  if (genericPhrases.test(bodyLower)) score -= 8;
+
+  /* Clamp to 0-100 */
+  return Math.max(0, Math.min(100, score));
 }
 
 // No-op save functions — Firestore handles persistence
@@ -2059,7 +2141,7 @@ function renderStats() {
 
 function renderReviews() {
   const list = document.getElementById('reviews-list');
-  let filtered = reviews.filter(r => !r.deleted && !r.pending);
+  let filtered = reviews.filter(r => !r.deleted && !r.pending && !r.archived);
   if (currentFilter !== 'all') filtered = filtered.filter(r => r.category === currentFilter);
   if (searchQuery) {
     const q = searchQuery.toLowerCase();
@@ -2070,8 +2152,18 @@ function renderReviews() {
     );
   }
   filtered.sort((a, b) => {
+    /* Manual sort order takes highest priority */
+    if (a.sortOrder != null && b.sortOrder != null) return a.sortOrder - b.sortOrder;
+    if (a.sortOrder != null) return -1;
+    if (b.sortOrder != null) return 1;
+    /* Then pinned */
     if (a.pinned && !b.pinned) return -1;
     if (!a.pinned && b.pinned) return 1;
+    /* Then AI interest score (higher = more interesting = top) */
+    const aScore = a.interestScore ?? 50;
+    const bScore = b.interestScore ?? 50;
+    if (aScore !== bScore) return bScore - aScore;
+    /* Then date */
     return new Date(b.date) - new Date(a.date);
   });
 
@@ -2107,7 +2199,8 @@ function renderReviews() {
       modActions = `
         <div class="card-mod-actions">
           <button class="mod-action-btn" onclick="modEditReview('${r.id}')">Edit</button>
-          <button class="mod-action-btn danger" onclick="modDeleteReview('${r.id}')">Delete</button>
+          <button class="mod-action-btn warn" onclick="modArchiveReview('${r.id}')">Archive</button>
+          <button class="mod-action-btn danger" onclick="confirmDeleteReview('${r.id}')">Delete</button>
           <button class="mod-action-btn warn" onclick="modTogglePin('${r.id}')">${r.pinned ? 'Unpin' : 'Pin'}</button>
           <button class="mod-action-btn success" onclick="modToggleFeature('${r.id}')">${r.featured ? 'Unfeature' : 'Feature'}</button>
         </div>
@@ -2122,7 +2215,8 @@ function renderReviews() {
     }
 
     return `
-      <div class="review-card ${animClass}" style="animation-delay:${i * 0.07}s">
+      <div class="review-card ${animClass}${isModUser ? ' mod-draggable' : ''}" style="animation-delay:${i * 0.07}s" data-review-id="${r.id}" ${isModUser ? 'draggable="true" ondragstart="onReviewDragStart(event)" ondragover="onReviewDragOver(event)" ondrop="onReviewDrop(event)" ondragend="onReviewDragEnd(event)"' : ''}>
+        ${isModUser ? '<div class="drag-handle" title="Drag to reorder">⠿</div>' : ''}
         <div class="card-sheen"></div>
         <div class="card-content">
           <div class="card-header">
@@ -2305,11 +2399,13 @@ function renderWriteView() {
 
     /* AI Moderation check */
     const modResult = aiModerateReview(subject, body, selectedRating, category);
+    const interestScore = aiScoreInterest(subject, body, selectedRating, category);
     const reviewData = {
       subject, category, rating: selectedRating,
       authorId: currentUser.id, author: currentUser.username,
       body, date: new Date().toISOString().slice(0, 10),
       helpful: 0, pinned: false, featured: false,
+      interestScore,
     };
 
     if (modResult.level === 3) {
@@ -2481,18 +2577,20 @@ function renderModPanel() {
 }
 
 function renderModReviewsTab(tabContent) {
-  const pendingReviews = reviews.filter(r => r.pending && !r.deleted);
-  const flaggedReviews = reviews.filter(r => r.flagged && !r.pending && !r.deleted);
-  const activeReviews = reviews.filter(r => !r.deleted && !r.pending);
-  const deletedReviews = reviews.filter(r => r.deleted);
-  if (!activeReviews.length && !deletedReviews.length && !pendingReviews.length) {
+  const pendingReviews = reviews.filter(r => r.pending && !r.deleted && !r.archived);
+  const flaggedReviews = reviews.filter(r => r.flagged && !r.pending && !r.deleted && !r.archived);
+  const activeReviews = reviews.filter(r => !r.deleted && !r.pending && !r.archived);
+  const archivedReviews = reviews.filter(r => r.archived && !r.deleted);
+  const hasCustomOrder = reviews.some(r => r.sortOrder != null);
+  if (!activeReviews.length && !archivedReviews.length && !pendingReviews.length) {
     tabContent.innerHTML = '<div class="empty-state"><h3>No reviews</h3></div>';
     return;
   }
-  let html = `<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+  let html = `<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
     <button class="mod-export-btn" onclick="exportReviewsCSV()">Export CSV</button>
     <button class="mod-export-btn" onclick="exportReviewsJSON()">Export JSON</button>
-    <span style="font-size:0.7rem;color:var(--text-muted);line-height:28px;margin-left:auto;">${activeReviews.length} active · ${pendingReviews.length} pending · ${flaggedReviews.length} flagged · ${deletedReviews.length} deleted</span>
+    ${hasCustomOrder ? '<button class="mod-export-btn" onclick="modClearSortOrder()" style="color:var(--warm);">Reset Custom Order</button>' : ''}
+    <span style="font-size:0.7rem;color:var(--text-muted);line-height:28px;margin-left:auto;">${activeReviews.length} active · ${pendingReviews.length} pending · ${flaggedReviews.length} flagged · ${archivedReviews.length} archived</span>
   </div>`;
 
   /* --- Pending reviews (Level 3 — held for approval) --- */
@@ -2512,7 +2610,7 @@ function renderModReviewsTab(tabContent) {
           </div>
           <div class="mod-actions">
             <button class="mod-action-btn success" onclick="modApprovePending('${r.id}')">Approve</button>
-            <button class="mod-action-btn danger" onclick="modRejectPending('${r.id}')">Reject</button>
+            <button class="mod-action-btn danger" onclick="confirmDeleteReview('${r.id}')">Reject</button>
           </div>
         </div>`;
       }).join('')}
@@ -2536,7 +2634,7 @@ function renderModReviewsTab(tabContent) {
           </div>
           <div class="mod-actions">
             <button class="mod-action-btn" onclick="modClearFlag('${r.id}')">Clear Flag</button>
-            <button class="mod-action-btn danger" onclick="modDeleteReview('${r.id}')">Delete</button>
+            <button class="mod-action-btn danger" onclick="confirmDeleteReview('${r.id}')">Delete</button>
           </div>
         </div>`;
       }).join('')}
@@ -2551,6 +2649,8 @@ function renderModReviewsTab(tabContent) {
     if (r.pinned) tags.push('<span class="pinned-tag">Pinned</span>');
     if (r.featured) tags.push('<span class="featured-tag">Featured</span>');
     if (r.flagged) tags.push('<span class="flagged-tag">Flagged</span>');
+    if (r.sortOrder != null) tags.push('<span style="font-size:0.55rem;color:var(--text-dim);">#' + (r.sortOrder + 1) + '</span>');
+    if (r.interestScore != null) tags.push('<span style="font-size:0.55rem;color:var(--text-dim);">AI:' + r.interestScore + '</span>');
     const isExpanded = modExpandedReview === r.id;
     return `<div class="mod-review-row${r.flagged ? ' mod-row-flagged-subtle' : ''}">
       <div class="mod-review-info" style="cursor:pointer;" onclick="modExpandedReview=modExpandedReview==='${r.id}'?null:'${r.id}';renderModPanel();">
@@ -2560,22 +2660,23 @@ function renderModReviewsTab(tabContent) {
       <div class="mod-actions">
         <button class="mod-action-btn warn" onclick="modTogglePin('${r.id}')">${r.pinned?'Unpin':'Pin'}</button>
         <button class="mod-action-btn success" onclick="modToggleFeature('${r.id}')">${r.featured?'Unfeature':'Feature'}</button>
-        <button class="mod-action-btn danger" onclick="modDeleteReview('${r.id}')">Delete</button>
+        <button class="mod-action-btn" onclick="modArchiveReview('${r.id}')">Archive</button>
+        <button class="mod-action-btn danger" onclick="confirmDeleteReview('${r.id}')">Delete</button>
       </div>
     </div>${isExpanded ? renderReviewEditDrawer(r) : ''}`;
   }).join('');
 
-  /* --- Deleted reviews --- */
-  if (deletedReviews.length) {
-    html += `<div style="margin-top:20px;font-size:0.72rem;font-weight:600;color:var(--text-muted);cursor:pointer;" onclick="document.getElementById('mod-deleted-reviews').style.display=document.getElementById('mod-deleted-reviews').style.display==='none'?'block':'none'">Deleted Reviews (${deletedReviews.length}) ▼</div>
-    <div id="mod-deleted-reviews" style="display:none;">${deletedReviews.map(r => {
+  /* --- Archived reviews --- */
+  if (archivedReviews.length) {
+    html += `<div style="margin-top:20px;font-size:0.72rem;font-weight:600;color:var(--text-muted);cursor:pointer;" onclick="document.getElementById('mod-archived-reviews').style.display=document.getElementById('mod-archived-reviews').style.display==='none'?'block':'none'">Archived Reviews (${archivedReviews.length}) ▼</div>
+    <div id="mod-archived-reviews" style="display:none;">${archivedReviews.map(r => {
       const authorUser = r.authorId ? getUserById(r.authorId) : null;
       const authorName = authorUser ? authorUser.username : r.author;
       return `<div class="mod-review-row" style="opacity:0.5;">
-        <div class="mod-review-info"><div class="mod-review-subject">${esc(r.subject)}</div><div class="mod-review-by">by ${esc(authorName)} · ${r.rating}★ · Deleted</div></div>
+        <div class="mod-review-info"><div class="mod-review-subject">${esc(r.subject)}</div><div class="mod-review-by">by ${esc(authorName)} · ${r.rating}★ · Archived</div></div>
         <div class="mod-actions">
-          <button class="mod-action-btn success" onclick="modRestoreReview('${r.id}')">Restore</button>
-          <button class="mod-action-btn danger" onclick="modPermanentDeleteReview('${r.id}')">Perm Delete</button>
+          <button class="mod-action-btn success" onclick="modUnarchiveReview('${r.id}')">Restore</button>
+          <button class="mod-action-btn danger" onclick="confirmDeleteReview('${r.id}')">Delete</button>
         </div>
       </div>`;
     }).join('')}</div>`;
@@ -2928,15 +3029,123 @@ function modEditReview(id) {
   openModal('edit-review-modal');
 }
 
-async function modDeleteReview(id) { await db.collection('reviews').doc(id).update({ deleted: true }); showToast('Review Deleted'); }
+async function modDeleteReview(id) {
+  await db.collection('reviews').doc(id).delete();
+  reviews = reviews.filter(r => r.id !== id);
+  renderReviews();
+  renderModPanel();
+  showToast('Review permanently deleted');
+}
+
+/* Confirm delete dialog */
+let pendingDeleteId = null;
+function confirmDeleteReview(id) {
+  pendingDeleteId = id;
+  const r = reviews.find(x => x.id === id);
+  document.getElementById('confirm-delete-subject').textContent = r ? r.subject : 'this review';
+  openModal('confirm-delete-modal');
+}
+async function executeConfirmedDelete() {
+  if (!pendingDeleteId) return;
+  closeModal('confirm-delete-modal');
+  await modDeleteReview(pendingDeleteId);
+  pendingDeleteId = null;
+}
+
+/* Archive system */
+async function modArchiveReview(id) {
+  await db.collection('reviews').doc(id).update({ archived: true });
+  showToast('Review archived');
+}
+async function modUnarchiveReview(id) {
+  await db.collection('reviews').doc(id).update({ archived: false });
+  showToast('Review restored from archive');
+}
+
+/* Drag-and-drop reorder */
+let draggedReviewId = null;
+
+function onReviewDragStart(e) {
+  const card = e.target.closest('.review-card');
+  if (!card) return;
+  draggedReviewId = card.dataset.reviewId;
+  card.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', draggedReviewId);
+}
+
+function onReviewDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const card = e.target.closest('.review-card');
+  if (!card || card.dataset.reviewId === draggedReviewId) return;
+  card.classList.add('drag-over');
+}
+
+function onReviewDragEnd(e) {
+  draggedReviewId = null;
+  document.querySelectorAll('.review-card').forEach(c => {
+    c.classList.remove('dragging', 'drag-over');
+  });
+}
+
+async function onReviewDrop(e) {
+  e.preventDefault();
+  const targetCard = e.target.closest('.review-card');
+  if (!targetCard || !draggedReviewId) return;
+  const targetId = targetCard.dataset.reviewId;
+  if (targetId === draggedReviewId) return;
+
+  /* Get the current visible order */
+  const list = document.getElementById('reviews-list');
+  const cards = Array.from(list.querySelectorAll('.review-card'));
+  const ids = cards.map(c => c.dataset.reviewId);
+
+  /* Remove dragged from its position */
+  const fromIdx = ids.indexOf(draggedReviewId);
+  const toIdx = ids.indexOf(targetId);
+  if (fromIdx === -1 || toIdx === -1) return;
+
+  ids.splice(fromIdx, 1);
+  ids.splice(toIdx, 0, draggedReviewId);
+
+  /* Assign sortOrder values and save to Firestore */
+  const batch = db.batch();
+  ids.forEach((id, i) => {
+    const ref = db.collection('reviews').doc(id);
+    batch.update(ref, { sortOrder: i });
+    const r = reviews.find(x => x.id === id);
+    if (r) r.sortOrder = i;
+  });
+  await batch.commit();
+
+  document.querySelectorAll('.review-card').forEach(c => c.classList.remove('dragging', 'drag-over'));
+  renderReviews();
+  showToast('Review order saved');
+}
+
+async function modClearSortOrder() {
+  const batch = db.batch();
+  reviews.forEach(r => {
+    if (r.sortOrder != null) {
+      batch.update(db.collection('reviews').doc(r.id), { sortOrder: firebase.firestore.FieldValue.delete() });
+      delete r.sortOrder;
+    }
+  });
+  await batch.commit();
+  renderReviews();
+  showToast('Custom order cleared — using AI sort');
+}
 
 async function modApprovePending(id) {
   await db.collection('reviews').doc(id).update({ pending: firebase.firestore.FieldValue.delete(), flagReason: firebase.firestore.FieldValue.delete(), flagScore: firebase.firestore.FieldValue.delete() });
   showToast('Review Approved & Published');
 }
 async function modRejectPending(id) {
-  await db.collection('reviews').doc(id).update({ deleted: true, pending: firebase.firestore.FieldValue.delete() });
-  showToast('Review Rejected');
+  await db.collection('reviews').doc(id).delete();
+  reviews = reviews.filter(r => r.id !== id);
+  renderModPanel();
+  showToast('Review Rejected & Deleted');
 }
 async function modClearFlag(id) {
   await db.collection('reviews').doc(id).update({ flagged: firebase.firestore.FieldValue.delete(), flagReason: firebase.firestore.FieldValue.delete(), flagScore: firebase.firestore.FieldValue.delete() });
@@ -3037,8 +3246,7 @@ function userEditOwnReview(id) {
 async function userDeleteOwnReview(id) {
   const r = reviews.find(x => x.id === id);
   if (!r || !currentUser || r.authorId !== currentUser.id) return;
-  await db.collection('reviews').doc(id).update({ deleted: true });
-  showToast('Review deleted');
+  confirmDeleteReview(id);
 }
 
 async function saveEditReview() {
