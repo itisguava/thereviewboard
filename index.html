@@ -1376,11 +1376,16 @@ function isLowQualityReview(subject, body) {
 let openaiApiKey = '';
 
 async function loadOpenAIKey() {
-  if (!firebaseReady) return;
+  if (!firebaseReady) { console.warn('[ReviewBoard] loadOpenAIKey: Firebase not ready'); return; }
   try {
     const doc = await db.collection('siteConfig').doc('openai').get();
-    if (doc.exists && doc.data().apiKey) openaiApiKey = doc.data().apiKey;
-  } catch(e) { /* silent */ }
+    if (doc.exists && doc.data().apiKey) {
+      openaiApiKey = doc.data().apiKey;
+      console.log('[ReviewBoard] OpenAI key loaded from Firestore (' + openaiApiKey.substring(0, 8) + '...)');
+    } else {
+      console.warn('[ReviewBoard] No OpenAI key found in Firestore (doc exists: ' + doc.exists + ')');
+    }
+  } catch(e) { console.error('[ReviewBoard] Failed to load OpenAI key:', e); }
 }
 
 async function aiModerateReview(subject, body, rating, category) {
@@ -2995,10 +3000,16 @@ function renderModSettingsTab(tabContent) {
 async function saveOpenAIKey() {
   const key = document.getElementById('openai-key-input').value.trim();
   if (!firebaseReady) { showToast('Firebase not available', true); return; }
-  await db.collection('siteConfig').doc('openai').set({ apiKey: key, updatedAt: new Date().toISOString() });
-  openaiApiKey = key;
-  showToast(key ? 'OpenAI API key saved — AI moderation active' : 'API key cleared — using heuristic fallback');
-  renderModPanel();
+  try {
+    await db.collection('siteConfig').doc('openai').set({ apiKey: key, updatedAt: new Date().toISOString() });
+    openaiApiKey = key;
+    console.log('[ReviewBoard] OpenAI key saved to Firestore (' + (key ? key.substring(0, 8) + '...' : 'cleared') + ')');
+    showToast(key ? 'OpenAI API key saved — AI moderation active' : 'API key cleared — using heuristic fallback');
+    renderModPanel();
+  } catch(e) {
+    console.error('[ReviewBoard] Failed to save OpenAI key:', e);
+    showToast('Failed to save API key: ' + e.message, true);
+  }
 }
 
 async function testOpenAIKey() {
