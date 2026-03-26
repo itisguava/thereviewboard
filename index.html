@@ -363,6 +363,11 @@ font-size: 0.58rem; font-weight: 600; letter-spacing: 0.5px;
 color: var(--accent);
 background: var(--accent-glow); padding: 2px 8px; border-radius: 6px;
 }
+.card-flagged {
+font-size: 0.58rem; font-weight: 600; letter-spacing: 0.5px;
+color: #e8a04a;
+background: rgba(232,160,74,0.1); padding: 2px 8px; border-radius: 6px;
+}
 .card-rating { margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
 .card-stars { font-size: 1.1rem; letter-spacing: 2px; }
 .card-stars .star-filled { color: var(--warm); }
@@ -776,6 +781,24 @@ transition: all 0.2s;
 .mod-action-btn.warn:hover { background: var(--warm-dim); }
 .mod-action-btn.success { color: var(--accent); border-color: rgba(122,172,138,0.2); }
 .mod-action-btn.success:hover { background: var(--accent-glow); }
+/* Mod queue sections */
+.mod-queue-section { margin-bottom: 20px; padding: 16px; border-radius: 14px; }
+.mod-queue-pending { background: rgba(196,106,106,0.04); border: 1px solid rgba(196,106,106,0.15); }
+.mod-queue-flagged { background: rgba(232,160,74,0.04); border: 1px solid rgba(232,160,74,0.15); }
+.mod-queue-header { font-size: 0.82rem; font-weight: 700; font-family: var(--sans); display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.mod-queue-desc { font-size: 0.68rem; color: var(--text-dim); margin-bottom: 12px; }
+.mod-queue-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.pending-dot { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+.flagged-dot { background: #e8a04a; box-shadow: 0 0 6px rgba(232,160,74,0.5); }
+.mod-row-pending { border-color: rgba(196,106,106,0.2); }
+.mod-row-flagged { border-color: rgba(232,160,74,0.2); }
+.mod-row-flagged-subtle { border-left: 3px solid rgba(232,160,74,0.4); }
+.mod-review-body-preview { font-size: 0.78rem; color: var(--text-muted); margin-top: 6px; line-height: 1.5; }
+.mod-flag-reason { font-size: 0.65rem; color: #e8a04a; margin-top: 4px; font-family: var(--mono); }
+.flagged-tag { font-size: 0.55rem; font-weight: 600; color: #e8a04a; background: rgba(232,160,74,0.1); padding: 2px 6px; border-radius: 5px; letter-spacing: 0.5px; }
+.mod-badge-count { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; font-size: 0.58rem; font-weight: 700; background: var(--danger); color: #fff; border-radius: 8px; padding: 0 4px; margin-left: 4px; }
+.pinned-tag { font-size: 0.55rem; font-weight: 600; color: var(--warm); background: var(--warm-dim); padding: 2px 6px; border-radius: 5px; letter-spacing: 0.5px; }
+.featured-tag { font-size: 0.55rem; font-weight: 600; color: var(--accent); background: var(--accent-glow); padding: 2px 6px; border-radius: 5px; letter-spacing: 0.5px; }
 /* Mod user rows */
 .mod-user-row-expanded {
 display: flex; align-items: center; gap: 14px;
@@ -1272,6 +1295,111 @@ let selectedUserIds = new Set();
 let initialReviewsLoaded = false;
 let skipNextReviewRender = false;
 
+/* Review quality settings */
+const REVIEW_MIN_BODY_LENGTH = 30;
+const REVIEW_MIN_SUBJECT_LENGTH = 3;
+const REVIEW_SPAM_COOLDOWN_MS = 60000; /* 1 min between reviews */
+let lastReviewSubmitTime = 0;
+
+function isLowQualityReview(subject, body) {
+  /* Check for repeated characters (e.g. "aaaaaaa") */
+  if (/(.)\1{5,}/i.test(body)) return 'Review body contains too many repeated characters';
+  /* Check for all-caps spam */
+  const letters = body.replace(/[^a-zA-Z]/g, '');
+  if (letters.length > 10 && letters === letters.toUpperCase()) return 'Please don\'t write your review in ALL CAPS';
+  /* Check for gibberish / very low word diversity */
+  const words = body.toLowerCase().split(/\s+/).filter(w => w.length > 1);
+  if (words.length >= 4) {
+    const unique = new Set(words);
+    if (unique.size <= Math.ceil(words.length * 0.25)) return 'Review seems to contain too many repeated words';
+  }
+  /* Check for very short words average (spam tends to be short bursts) */
+  if (words.length >= 3 && words.every(w => w.length <= 3)) return 'Please write a more detailed review';
+  return null;
+}
+
+/* ============================================ */
+/* AI REVIEW MODERATOR                          */
+/* Level 1 = good (post normally)               */
+/* Level 2 = suspicious (post + flag for review)*/
+/* Level 3 = likely spam (hold for approval)    */
+/* ============================================ */
+function aiModerateReview(subject, body, rating, category) {
+  let score = 0; /* higher = more suspicious */
+  const reasons = [];
+  const bodyLower = body.toLowerCase();
+  const subjectLower = subject.toLowerCase();
+  const words = bodyLower.split(/\s+/).filter(w => w.length > 0);
+  const uniqueWords = new Set(words);
+
+  /* --- Spam signals (heavy weight) --- */
+
+  /* Excessive punctuation / special chars */
+  const specialRatio = (body.replace(/[a-zA-Z0-9\s]/g, '').length) / Math.max(body.length, 1);
+  if (specialRatio > 0.3) { score += 4; reasons.push('Excessive special characters'); }
+
+  /* All or mostly emoji / unicode nonsense */
+  const emojiPattern = /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu;
+  const emojiCount = (body.match(emojiPattern) || []).length;
+  if (emojiCount > 5) { score += 3; reasons.push('Excessive emojis'); }
+
+  /* Chat/meme language patterns */
+  const chatPatterns = /\b(gorp|skibidi|rizz|gyatt|sigma|ohio|fanum tax|sussy|baka|uwu|owo|brainrot|pog|copium|no cap fr fr|bussin|yeet|sus|deez|ligma|amogus|shitpost)\b/i;
+  if (chatPatterns.test(bodyLower) || chatPatterns.test(subjectLower)) { score += 4; reasons.push('Contains meme/spam language'); }
+
+  /* "Say X in the chat" or call-to-action spam */
+  if (/\b(say|type|put|write|spam)\b.{0,15}\b(in the|in chat|in comments|below)\b/i.test(bodyLower)) { score += 5; reasons.push('Call-to-action spam pattern'); }
+
+  /* URL spam */
+  const urlCount = (body.match(/https?:\/\/\S+/g) || []).length;
+  if (urlCount >= 2) { score += 3; reasons.push('Multiple URLs'); }
+  if (urlCount >= 4) { score += 3; reasons.push('Excessive URLs'); }
+
+  /* Repeated phrases (copy-paste spam) */
+  if (words.length >= 6) {
+    const trigrams = [];
+    for (let i = 0; i < words.length - 2; i++) trigrams.push(words.slice(i, i+3).join(' '));
+    const trigramSet = new Set(trigrams);
+    if (trigramSet.size < trigrams.length * 0.5) { score += 4; reasons.push('Repetitive phrasing'); }
+  }
+
+  /* Subject doesn't match a reviewable thing (very short or nonsensical) */
+  if (subjectLower.length < 4 && !/\b\w{3,}\b/.test(subjectLower)) { score += 2; reasons.push('Subject too vague'); }
+
+  /* --- Suspicious signals (lighter weight) --- */
+
+  /* Very low word diversity for longer text */
+  if (words.length >= 8 && uniqueWords.size < words.length * 0.4) { score += 2; reasons.push('Low word diversity'); }
+
+  /* Body doesn't really review anything (no opinion/descriptive words) */
+  const opinionWords = /\b(good|bad|great|terrible|amazing|awful|love|hate|best|worst|decent|okay|excellent|poor|fantastic|mediocre|solid|weak|strong|recommend|avoid|enjoy|disappoint|impress|quality|nice|fine|average|outstanding|horrible|perfect|favorite|overrated|underrated|worth|waste)\b/i;
+  if (!opinionWords.test(bodyLower) && words.length < 15) { score += 2; reasons.push('No clear opinion expressed'); }
+
+  /* Suspiciously short for the minimum (just barely meets it) */
+  if (body.length < 45) { score += 1; reasons.push('Very brief review'); }
+
+  /* Same text in subject and body */
+  if (bodyLower.includes(subjectLower) && subjectLower.length > 5 && body.length < 80) { score += 2; reasons.push('Body repeats subject'); }
+
+  /* Excessive caps in body */
+  const letters = body.replace(/[^a-zA-Z]/g, '');
+  if (letters.length > 15) {
+    const capsRatio = (letters.replace(/[^A-Z]/g, '').length) / letters.length;
+    if (capsRatio > 0.6) { score += 2; reasons.push('Excessive capitals'); }
+  }
+
+  /* New/unverified user gets slight bump */
+  if (currentUser && !isVerified(currentUser)) { score += 1; reasons.push('Unverified account'); }
+
+  /* --- Determine level --- */
+  let level, label;
+  if (score >= 6) { level = 3; label = 'Blocked — held for mod approval'; }
+  else if (score >= 3) { level = 2; label = 'Suspicious — posted but flagged'; }
+  else { level = 1; label = 'Clean'; }
+
+  return { level, score, reasons, label };
+}
+
 // No-op save functions — Firestore handles persistence
 function saveReviews() {}
 function saveUsers() {}
@@ -1747,10 +1875,11 @@ function renderAuthArea() {
     if (!modBtn) {
       modBtn = document.createElement('button');
       modBtn.dataset.view = 'mod';
-      modBtn.textContent = 'Mod';
       modBtn.addEventListener('click', () => switchView('mod'));
       navEl.appendChild(modBtn);
     }
+    const queueCount = reviews.filter(r => (r.pending || r.flagged) && !r.deleted).length;
+    modBtn.innerHTML = queueCount > 0 ? `Mod <span class="mod-badge-count">${queueCount}</span>` : 'Mod';
   } else {
     if (modBtn) modBtn.remove();
   }
@@ -1930,7 +2059,7 @@ function renderStats() {
 
 function renderReviews() {
   const list = document.getElementById('reviews-list');
-  let filtered = reviews.filter(r => !r.deleted);
+  let filtered = reviews.filter(r => !r.deleted && !r.pending);
   if (currentFilter !== 'all') filtered = filtered.filter(r => r.category === currentFilter);
   if (searchQuery) {
     const q = searchQuery.toLowerCase();
@@ -1963,6 +2092,7 @@ function renderReviews() {
     const badges = [];
     if (r.pinned) badges.push('<span class="card-pinned">Pinned</span>');
     if (r.featured) badges.push('<span class="card-featured">Featured</span>');
+    if (r.flagged && isModUser) badges.push('<span class="card-flagged">Flagged</span>');
     const badgeHTML = badges.length ? `<div class="card-badges">${badges.join('')}</div>` : '';
     const avatarColor = authorUser ? getDefaultAvatarColor(authorUser) : 'var(--accent)';
     const avatarHTML = authorAvatar
@@ -2134,7 +2264,7 @@ function renderWriteView() {
           </div>
         </div>
         <div class="form-group">
-          <label>Your Review</label>
+          <label>Your Review <span style="font-weight:400;color:var(--text-muted);font-size:0.65rem;">(min ${REVIEW_MIN_BODY_LENGTH} chars)</span></label>
           <textarea id="f-body" placeholder="The good, the bad, and the unexpected..."></textarea>
         </div>
         <button class="submit-btn" id="submit-btn">Publish Review</button>
@@ -2163,20 +2293,50 @@ function renderWriteView() {
     const category = document.getElementById('f-category').value;
     const body = document.getElementById('f-body').value.trim();
     if (!subject) { showToast('Enter what you are reviewing'); return; }
+    if (subject.length < REVIEW_MIN_SUBJECT_LENGTH) { showToast('Subject must be at least ' + REVIEW_MIN_SUBJECT_LENGTH + ' characters', true); return; }
     if (!selectedRating) { showToast('Select a rating'); return; }
     if (!body) { showToast('Write your review'); return; }
+    if (body.length < REVIEW_MIN_BODY_LENGTH) { showToast('Review must be at least ' + REVIEW_MIN_BODY_LENGTH + ' characters — write something meaningful!', true); return; }
+    const qualityIssue = isLowQualityReview(subject, body);
+    if (qualityIssue) { showToast(qualityIssue, true); return; }
+    if (Date.now() - lastReviewSubmitTime < REVIEW_SPAM_COOLDOWN_MS) { showToast('Please wait a minute before posting another review', true); return; }
     if (!canWriteReview(currentUser)) { showToast('Daily review limit reached', true); return; }
     if (!firebaseReady) { showToast('Firebase not available in preview mode', true); return; }
 
-    await db.collection('reviews').add({
+    /* AI Moderation check */
+    const modResult = aiModerateReview(subject, body, selectedRating, category);
+    const reviewData = {
       subject, category, rating: selectedRating,
       authorId: currentUser.id, author: currentUser.username,
       body, date: new Date().toISOString().slice(0, 10),
       helpful: 0, pinned: false, featured: false,
-    });
+    };
 
-    switchView('browse');
-    showToast('Review Published');
+    if (modResult.level === 3) {
+      /* Held for approval — save as pending, don't show publicly */
+      reviewData.pending = true;
+      reviewData.flagReason = modResult.reasons.join(', ');
+      reviewData.flagScore = modResult.score;
+      await db.collection('reviews').add(reviewData);
+      lastReviewSubmitTime = Date.now();
+      switchView('browse');
+      showToast('Your review has been submitted for approval');
+    } else if (modResult.level === 2) {
+      /* Posts but flagged for mod review */
+      reviewData.flagged = true;
+      reviewData.flagReason = modResult.reasons.join(', ');
+      reviewData.flagScore = modResult.score;
+      await db.collection('reviews').add(reviewData);
+      lastReviewSubmitTime = Date.now();
+      switchView('browse');
+      showToast('Review Published');
+    } else {
+      /* Clean — post normally */
+      await db.collection('reviews').add(reviewData);
+      lastReviewSubmitTime = Date.now();
+      switchView('browse');
+      showToast('Review Published');
+    }
   });
 }
 
@@ -2321,25 +2481,78 @@ function renderModPanel() {
 }
 
 function renderModReviewsTab(tabContent) {
-  const activeReviews = reviews.filter(r => !r.deleted);
+  const pendingReviews = reviews.filter(r => r.pending && !r.deleted);
+  const flaggedReviews = reviews.filter(r => r.flagged && !r.pending && !r.deleted);
+  const activeReviews = reviews.filter(r => !r.deleted && !r.pending);
   const deletedReviews = reviews.filter(r => r.deleted);
-  if (!activeReviews.length && !deletedReviews.length) {
+  if (!activeReviews.length && !deletedReviews.length && !pendingReviews.length) {
     tabContent.innerHTML = '<div class="empty-state"><h3>No reviews</h3></div>';
     return;
   }
   let html = `<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
     <button class="mod-export-btn" onclick="exportReviewsCSV()">Export CSV</button>
     <button class="mod-export-btn" onclick="exportReviewsJSON()">Export JSON</button>
-    <span style="font-size:0.7rem;color:var(--text-muted);line-height:28px;margin-left:auto;">${activeReviews.length} active · ${deletedReviews.length} deleted</span>
+    <span style="font-size:0.7rem;color:var(--text-muted);line-height:28px;margin-left:auto;">${activeReviews.length} active · ${pendingReviews.length} pending · ${flaggedReviews.length} flagged · ${deletedReviews.length} deleted</span>
   </div>`;
+
+  /* --- Pending reviews (Level 3 — held for approval) --- */
+  if (pendingReviews.length) {
+    html += `<div class="mod-queue-section mod-queue-pending">
+      <div class="mod-queue-header"><span class="mod-queue-dot pending-dot"></span> Pending Approval (${pendingReviews.length})</div>
+      <div class="mod-queue-desc">These reviews were blocked by AI moderation and need your approval before they go live.</div>
+      ${pendingReviews.map(r => {
+        const authorUser = r.authorId ? getUserById(r.authorId) : null;
+        const authorName = authorUser ? authorUser.username : r.author;
+        return `<div class="mod-review-row mod-row-pending">
+          <div class="mod-review-info" style="flex:1;">
+            <div class="mod-review-subject">${esc(r.subject)}</div>
+            <div class="mod-review-by">by ${esc(authorName)} · ${r.rating}★ · ${CATEGORIES[r.category]?.label||r.category} · ${timeAgo(r.date)}</div>
+            <div class="mod-review-body-preview">${esc(r.body.length > 200 ? r.body.slice(0, 200) + '…' : r.body)}</div>
+            <div class="mod-flag-reason">AI reason: ${esc(r.flagReason || 'Unknown')} · Score: ${r.flagScore || '?'}</div>
+          </div>
+          <div class="mod-actions">
+            <button class="mod-action-btn success" onclick="modApprovePending('${r.id}')">Approve</button>
+            <button class="mod-action-btn danger" onclick="modRejectPending('${r.id}')">Reject</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  /* --- Flagged reviews (Level 2 — posted but needs checking) --- */
+  if (flaggedReviews.length) {
+    html += `<div class="mod-queue-section mod-queue-flagged">
+      <div class="mod-queue-header"><span class="mod-queue-dot flagged-dot"></span> Flagged for Review (${flaggedReviews.length})</div>
+      <div class="mod-queue-desc">These reviews are live but were flagged as potentially suspicious by AI moderation.</div>
+      ${flaggedReviews.map(r => {
+        const authorUser = r.authorId ? getUserById(r.authorId) : null;
+        const authorName = authorUser ? authorUser.username : r.author;
+        return `<div class="mod-review-row mod-row-flagged">
+          <div class="mod-review-info" style="flex:1;">
+            <div class="mod-review-subject">${esc(r.subject)}</div>
+            <div class="mod-review-by">by ${esc(authorName)} · ${r.rating}★ · ${CATEGORIES[r.category]?.label||r.category} · ${timeAgo(r.date)}</div>
+            <div class="mod-review-body-preview">${esc(r.body.length > 200 ? r.body.slice(0, 200) + '…' : r.body)}</div>
+            <div class="mod-flag-reason">AI reason: ${esc(r.flagReason || 'Unknown')} · Score: ${r.flagScore || '?'}</div>
+          </div>
+          <div class="mod-actions">
+            <button class="mod-action-btn" onclick="modClearFlag('${r.id}')">Clear Flag</button>
+            <button class="mod-action-btn danger" onclick="modDeleteReview('${r.id}')">Delete</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  /* --- Active reviews --- */
   html += activeReviews.map(r => {
     const authorUser = r.authorId ? getUserById(r.authorId) : null;
     const authorName = authorUser ? authorUser.username : r.author;
     const tags = [];
     if (r.pinned) tags.push('<span class="pinned-tag">Pinned</span>');
     if (r.featured) tags.push('<span class="featured-tag">Featured</span>');
+    if (r.flagged) tags.push('<span class="flagged-tag">Flagged</span>');
     const isExpanded = modExpandedReview === r.id;
-    return `<div class="mod-review-row">
+    return `<div class="mod-review-row${r.flagged ? ' mod-row-flagged-subtle' : ''}">
       <div class="mod-review-info" style="cursor:pointer;" onclick="modExpandedReview=modExpandedReview==='${r.id}'?null:'${r.id}';renderModPanel();">
         <div class="mod-review-subject">${esc(r.subject)} ${tags.join(' ')} <span style="font-size:0.65rem;color:var(--text-dim);">${isExpanded?'▲':'▼'}</span></div>
         <div class="mod-review-by">by ${esc(authorName)} · ${r.rating}★ · ${CATEGORIES[r.category]?.label||r.category} · ${timeAgo(r.date)} · ${r.helpful||0} helpful</div>
@@ -2351,6 +2564,8 @@ function renderModReviewsTab(tabContent) {
       </div>
     </div>${isExpanded ? renderReviewEditDrawer(r) : ''}`;
   }).join('');
+
+  /* --- Deleted reviews --- */
   if (deletedReviews.length) {
     html += `<div style="margin-top:20px;font-size:0.72rem;font-weight:600;color:var(--text-muted);cursor:pointer;" onclick="document.getElementById('mod-deleted-reviews').style.display=document.getElementById('mod-deleted-reviews').style.display==='none'?'block':'none'">Deleted Reviews (${deletedReviews.length}) ▼</div>
     <div id="mod-deleted-reviews" style="display:none;">${deletedReviews.map(r => {
@@ -2705,7 +2920,28 @@ function exportUsersJSON() {
 /* ============================================ */
 /* MODERATOR ACTIONS (Firestore)                */
 /* ============================================ */
+function modEditReview(id) {
+  const r = reviews.find(x => x.id === id);
+  if (!r) return;
+  editingReviewId = id;
+  document.getElementById('edit-review-body').value = r.body;
+  openModal('edit-review-modal');
+}
+
 async function modDeleteReview(id) { await db.collection('reviews').doc(id).update({ deleted: true }); showToast('Review Deleted'); }
+
+async function modApprovePending(id) {
+  await db.collection('reviews').doc(id).update({ pending: firebase.firestore.FieldValue.delete(), flagReason: firebase.firestore.FieldValue.delete(), flagScore: firebase.firestore.FieldValue.delete() });
+  showToast('Review Approved & Published');
+}
+async function modRejectPending(id) {
+  await db.collection('reviews').doc(id).update({ deleted: true, pending: firebase.firestore.FieldValue.delete() });
+  showToast('Review Rejected');
+}
+async function modClearFlag(id) {
+  await db.collection('reviews').doc(id).update({ flagged: firebase.firestore.FieldValue.delete(), flagReason: firebase.firestore.FieldValue.delete(), flagScore: firebase.firestore.FieldValue.delete() });
+  showToast('Flag Cleared');
+}
 
 async function modTogglePin(id) {
   const r = reviews.find(x => x.id === id); if (!r) return;
@@ -2810,6 +3046,9 @@ async function saveEditReview() {
   if (!r) return;
   const newBody = document.getElementById('edit-review-body').value.trim();
   if (!newBody) { showToast('Review cannot be empty', true); return; }
+  if (newBody.length < REVIEW_MIN_BODY_LENGTH) { showToast('Review must be at least ' + REVIEW_MIN_BODY_LENGTH + ' characters', true); return; }
+  const qualityIssue = isLowQualityReview(r.subject || '', newBody);
+  if (qualityIssue && !(currentUser && isMod(currentUser))) { showToast(qualityIssue, true); return; }
   await db.collection('reviews').doc(editingReviewId).update({
     body: newBody,
     editedBy: currentUser.username,
