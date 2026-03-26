@@ -332,6 +332,19 @@ to { opacity: 1; transform: translateY(0); }
 .drag-handle:active { cursor: grabbing; }
 .review-card.mod-draggable:hover .drag-handle { opacity: 0.6; }
 .review-card.mod-draggable:hover .drag-handle:hover { opacity: 1; color: var(--accent); }
+/* Announcement splash */
+.announcement-splash-inner {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 24px;
+  padding: 40px 32px; max-width: 480px; width: 90%; text-align: center;
+  animation: cardIn 0.4s ease both;
+}
+.announcement-splash-inner img {
+  max-width: 100%; max-height: 300px; border-radius: 14px;
+  margin-bottom: 20px; object-fit: contain;
+}
+.announcement-splash-inner h2 { font-family: var(--serif); font-size: 1.4rem; margin-bottom: 10px; }
+.announcement-splash-inner p { font-size: 0.88rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 24px; }
+.announcement-splash-inner .submit-btn { padding: 12px 32px; font-size: 0.85rem; }
 .review-card:hover {
 border-color: var(--border-light);
 transform: translateY(-2px);
@@ -1160,6 +1173,16 @@ Already have an account? <a onclick="closeModal('register-modal');openModal('log
 <button class="submit-btn" style="background:var(--danger);padding:10px 24px;" onclick="executeConfirmedDelete()">Yes, Delete Forever</button>
 <button class="submit-btn" style="background:var(--glass-bg);color:var(--text-muted);border:1px solid var(--border);padding:10px 24px;" onclick="closeModal('confirm-delete-modal')">Cancel</button>
 </div>
+</div>
+</div>
+
+<!-- Announcement Splash -->
+<div class="modal-overlay" id="announcement-splash">
+<div class="announcement-splash-inner">
+<img id="ann-splash-img" src="" alt="Announcement" style="display:none;">
+<h2 id="ann-splash-title">Announcement</h2>
+<p id="ann-splash-body"></p>
+<button class="submit-btn" id="ann-splash-btn" onclick="dismissAnnouncement()">Got it</button>
 </div>
 </div>
 
@@ -2922,7 +2945,23 @@ function renderModAnalyticsTab(tabContent) {
 
 /* ---- Settings Tab ---- */
 function renderModSettingsTab(tabContent) {
+  /* Load current announcement from Firestore if available */
+  const ann = window._currentAnnouncement || {};
   tabContent.innerHTML = `
+    <div class="mod-settings-section">
+      <h4>Announcement / Splash Screen</h4>
+      <div style="font-size:0.68rem;color:var(--text-dim);margin-bottom:10px;">Display an image and message to all users. They'll see it once (on current session or next visit), then can dismiss it.</div>
+      <div class="form-group"><label>Image URL</label><input type="text" id="ann-image-url" value="${esc(ann.imageUrl || '')}" placeholder="https://example.com/image.png"></div>
+      <div class="form-group"><label>Message / Title</label><input type="text" id="ann-title" value="${esc(ann.title || '')}" placeholder="Important Announcement"></div>
+      <div class="form-group"><label>Description</label><textarea id="ann-body" placeholder="Tell users what this is about...">${esc(ann.body || '')}</textarea></div>
+      <div class="form-group"><label>Button Text</label><input type="text" id="ann-btn-text" value="${esc(ann.btnText || 'Got it')}" placeholder="Got it"></div>
+      <div class="mod-edit-row" style="align-items:center;gap:16px;margin-top:8px;">
+        <label style="font-size:0.72rem;display:flex;align-items:center;gap:8px;color:var(--text-muted);"><input type="checkbox" id="ann-active" ${ann.active?'checked':''}> Active (visible to users)</label>
+        <button class="save-btn" onclick="saveAnnouncement()">Save Announcement</button>
+        <button class="mod-action-btn danger" onclick="clearAnnouncement()">Clear</button>
+        <button class="mod-action-btn" onclick="previewAnnouncement()">Preview</button>
+      </div>
+    </div>
     <div class="mod-settings-section"><h4>Review Limits (per role)</h4>
       ${Object.entries(REVIEW_LIMITS).map(([role, limit]) => `<div class="mod-settings-row"><label>${role.charAt(0).toUpperCase()+role.slice(1)}</label><input type="number" id="mod-limit-${role}" value="${limit===Infinity?999:limit}" min="0" max="999" style="width:80px;" onchange="updateReviewLimit('${role}', this.value)"></div>`).join('')}
     </div>
@@ -2965,6 +3004,86 @@ async function modResetAllHelpful() {
   reviews.forEach(r => { if ((r.helpful||0) > 0) batch.update(db.collection('reviews').doc(r.id), { helpful: 0 }); });
   await batch.commit();
   showToast('All helpful counts reset to 0');
+}
+
+/* ============================================ */
+/* ANNOUNCEMENT / SPLASH SYSTEM                 */
+/* ============================================ */
+window._currentAnnouncement = null;
+
+async function loadAnnouncement() {
+  if (!firebaseReady) return;
+  try {
+    const doc = await db.collection('siteConfig').doc('announcement').get();
+    if (doc.exists) {
+      window._currentAnnouncement = doc.data();
+      checkShowAnnouncement();
+    }
+  } catch(e) { /* silent */ }
+}
+
+function checkShowAnnouncement() {
+  const ann = window._currentAnnouncement;
+  if (!ann || !ann.active) return;
+  /* Check if user already dismissed this version */
+  const dismissedVersion = localStorage.getItem('rb_ann_dismissed');
+  if (dismissedVersion === ann.version) return;
+  showAnnouncementSplash(ann);
+}
+
+function showAnnouncementSplash(ann) {
+  const overlay = document.getElementById('announcement-splash');
+  document.getElementById('ann-splash-title').textContent = ann.title || 'Announcement';
+  document.getElementById('ann-splash-body').textContent = ann.body || '';
+  const img = document.getElementById('ann-splash-img');
+  if (ann.imageUrl) { img.src = ann.imageUrl; img.style.display = 'block'; }
+  else { img.style.display = 'none'; }
+  document.getElementById('ann-splash-btn').textContent = ann.btnText || 'Got it';
+  overlay.classList.add('open');
+}
+
+function dismissAnnouncement() {
+  const ann = window._currentAnnouncement;
+  if (ann && ann.version) localStorage.setItem('rb_ann_dismissed', ann.version);
+  document.getElementById('announcement-splash').classList.remove('open');
+}
+
+async function saveAnnouncement() {
+  if (!firebaseReady) { showToast('Firebase not available', true); return; }
+  const data = {
+    imageUrl: document.getElementById('ann-image-url').value.trim(),
+    title: document.getElementById('ann-title').value.trim(),
+    body: document.getElementById('ann-body').value.trim(),
+    btnText: document.getElementById('ann-btn-text').value.trim() || 'Got it',
+    active: document.getElementById('ann-active').checked,
+    version: Date.now().toString(),
+    updatedBy: currentUser.username,
+    updatedAt: new Date().toISOString(),
+  };
+  await db.collection('siteConfig').doc('announcement').set(data);
+  window._currentAnnouncement = data;
+  showToast('Announcement saved' + (data.active ? ' — now live!' : ''));
+}
+
+async function clearAnnouncement() {
+  if (!firebaseReady) { showToast('Firebase not available', true); return; }
+  await db.collection('siteConfig').doc('announcement').set({ active: false, version: Date.now().toString() });
+  window._currentAnnouncement = { active: false };
+  document.getElementById('ann-image-url').value = '';
+  document.getElementById('ann-title').value = '';
+  document.getElementById('ann-body').value = '';
+  document.getElementById('ann-active').checked = false;
+  showToast('Announcement cleared');
+}
+
+function previewAnnouncement() {
+  const preview = {
+    imageUrl: document.getElementById('ann-image-url').value.trim(),
+    title: document.getElementById('ann-title').value.trim(),
+    body: document.getElementById('ann-body').value.trim(),
+    btnText: document.getElementById('ann-btn-text').value.trim() || 'Got it',
+  };
+  showAnnouncementSplash(preview);
 }
 
 /* ---- Data Tab ---- */
@@ -3416,6 +3535,9 @@ if (firebaseReady) {
     renderAuthArea();
     renderAll();
   });
+
+  /* Load announcement config */
+  loadAnnouncement();
 } else {
   // Offline/preview mode — no data
   reviews = [];
