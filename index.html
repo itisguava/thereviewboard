@@ -985,28 +985,165 @@ font-weight: 400; margin-bottom: 8px;
 .contact-success p {
 color: var(--text-muted); font-size: 0.88rem;
 }
+/* Mobile menu button */
+.mobile-menu-btn {
+  display: none;
+  background: none; border: none; cursor: pointer;
+  width: 32px; height: 24px; position: relative;
+  flex-direction: column; justify-content: space-between;
+  padding: 0; z-index: 101;
+}
+.mobile-menu-btn span {
+  display: block; width: 100%; height: 2px;
+  background: var(--text-muted); border-radius: 2px;
+  transition: all 0.3s ease;
+}
+.mobile-menu-btn.open span:nth-child(1) { transform: rotate(45deg) translate(6px, 6px); }
+.mobile-menu-btn.open span:nth-child(2) { opacity: 0; }
+.mobile-menu-btn.open span:nth-child(3) { transform: rotate(-45deg) translate(7px, -7px); }
+
+/* Mobile overlay */
+.mobile-nav-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5); z-index: 99;
+}
+.mobile-nav-overlay.show { display: block; }
+
 /* Responsive */
 @media (max-width: 768px) {
-header { padding: 0 20px; }
-main { padding: 120px 20px 60px; }
-.stats-row { gap: 24px; }
-.stat-value { font-size: 1.4rem; }
-.filters-search-row { flex-direction: column; align-items: stretch; }
-.search-wrap input { width: 100%; }
-.card-content { padding: 20px 24px; }
-.card-header { flex-direction: column; gap: 8px; }
-.form-row { flex-direction: column; gap: 0; }
-.profile-avatar-section { flex-direction: column; text-align: center; }
-.mod-user-row-expanded { flex-wrap: wrap; }
-.mod-user-actions-expanded { width: 100%; margin-top: 8px; }
-.mod-bulk-actions { width: 100%; }
-.modal { padding: 28px 24px; }
-header.scrolled .header-inner { padding: 10px 16px; }
+  header { padding: 0 16px; }
+  .header-inner { padding: 16px 0; }
+  header.scrolled .header-inner { padding: 10px 14px; border-radius: 12px; }
+  .mobile-menu-btn { display: flex; }
+
+  nav#main-nav {
+    position: fixed; top: 0; right: -280px;
+    width: 260px; height: 100vh;
+    background: rgba(16, 15, 14, 0.97);
+    backdrop-filter: blur(32px) saturate(1.4);
+    -webkit-backdrop-filter: blur(32px) saturate(1.4);
+    border-left: 1px solid var(--glass-border);
+    flex-direction: column; gap: 0;
+    padding: 80px 20px 32px;
+    z-index: 100; transition: right 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+    box-shadow: -8px 0 32px rgba(0,0,0,0.4);
+  }
+  nav#main-nav.open { right: 0; }
+  nav#main-nav button {
+    width: 100%; text-align: left;
+    padding: 14px 18px; border-radius: 12px;
+    font-size: 0.85rem; letter-spacing: 1px;
+  }
+  nav#main-nav button.active {
+    background: rgba(255,255,255,0.06);
+  }
+
+  .auth-area { margin-left: 0; gap: 8px; }
+  .auth-btn { font-size: 0.68rem; padding: 6px 12px; }
+
+  main { padding: 100px 16px 60px; }
+
+  /* Hero */
+  .hero { margin-bottom: 40px; padding: 20px 0; }
+  .hero h1 { font-size: 2rem; }
+  .hero p { font-size: 0.88rem; }
+
+  /* Stats */
+  .stats-row { gap: 20px; flex-wrap: wrap; justify-content: center; }
+  .stat-value { font-size: 1.3rem; }
+  .stat-label { font-size: 0.6rem; letter-spacing: 1.5px; }
+
+  /* Filters */
+  .filters-search-row { flex-direction: column; align-items: stretch; gap: 12px; }
+  .filters { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+  .filter-btn { white-space: nowrap; flex-shrink: 0; }
+  .search-wrap { width: 100%; }
+  .search-wrap input { width: 100%; }
+
+  /* Cards */
+  .card-content { padding: 18px 20px; }
+  .card-header { flex-direction: column; gap: 8px; }
+  .card-subject { font-size: 1.1rem; }
+  .card-footer { flex-direction: column; gap: 10px; align-items: flex-start; }
+  .card-meta { flex-wrap: wrap; gap: 8px; }
+  .card-mod-actions { flex-wrap: wrap; }
+  .review-card { border-radius: 16px; }
+
+  /* Forms */
+  .form-container { max-width: 100%; }
+  .form-inner { padding: 24px 20px; border-radius: 16px; }
+  .form-row { flex-direction: column; gap: 0; }
+  .form-group input, .form-group select, .form-group textarea { font-size: 16px; padding: 12px 14px; }
+  .star-picker .star { font-size: 2rem; }
+  .submit-btn { padding: 14px; font-size: 0.78rem; }
+
+  /* Profile */
+  .profile-card { padding: 28px 20px; border-radius: 16px; }
+  .profile-avatar-section { flex-direction: column; text-align: center; }
+  .profile-stats { gap: 16px; flex-wrap: wrap; }
+  .pub-profile-card { padding: 32px 20px; }
+  .pub-avatar { width: 90px; height: 90px; font-size: 2.2rem; }
+  .pub-username { font-size: 1.5rem; }
+  .pub-stats { gap: 16px; flex-wrap: wrap; }
+
+  /* Mod panel */
+  .mod-tabs { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+  .mod-tab { white-space: nowrap; flex-shrink: 0; font-size: 0.68rem; padding: 7px 14px; }
+  .mod-review-row { flex-direction: column; gap: 10px; padding: 14px 16px; }
+  .mod-actions { width: 100%; flex-wrap: wrap; }
+  .mod-action-btn { flex: 1; min-width: 0; text-align: center; font-size: 0.65rem; padding: 6px 8px; }
+  .mod-analytics-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .mod-analytics-card { padding: 14px 10px; }
+  .mod-analytics-card .stat-val { font-size: 1.4rem; }
+  .mod-edit-row { flex-direction: column; }
+  .mod-edit-row .form-group { min-width: 0; }
+  .mod-settings-section { padding: 14px; }
+  .mod-settings-row { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .mod-settings-row input { width: 100%; }
+  .mod-data-table { font-size: 0.68rem; display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .mod-user-row-expanded { flex-wrap: wrap; }
+  .mod-user-actions-expanded { width: 100%; margin-top: 8px; }
+  .mod-bulk-actions { width: 100%; }
+
+  /* Modals */
+  .modal-overlay { padding: 16px; align-items: flex-end; }
+  .modal { padding: 24px 20px; border-radius: 16px; max-height: 85vh; overflow-y: auto; }
+  .modal h2 { font-size: 1.2rem; }
+
+  /* Toast */
+  .toast { left: 16px; right: 16px; transform: translateX(0) translateY(100px); text-align: center; font-size: 0.78rem; padding: 12px 20px; }
+  .toast.show { transform: translateX(0) translateY(0); }
+
+  /* User dropdown */
+  .user-dropdown { right: -16px; min-width: 200px; }
+
+  /* Drag handle — disable on mobile (use mod panel instead) */
+  .drag-handle { display: none; }
+
+  /* Announcement splash */
+  .announcement-splash-inner { padding: 28px 20px; width: 95%; }
+  .announcement-splash-inner img { max-height: 200px; }
+  .announcement-splash-inner h2 { font-size: 1.2rem; }
+
+  /* Footer */
+  .site-footer { padding: 30px 16px 24px; }
 }
+
 @media (max-width: 480px) {
-.hero h1 { font-size: 2rem; }
-.stats-row { flex-wrap: wrap; gap: 16px; }
-.card-footer { flex-direction: column; gap: 12px; align-items: flex-start; }
+  .hero h1 { font-size: 1.7rem; }
+  .hero p { font-size: 0.82rem; }
+  .stats-row { gap: 12px; }
+  .stat-value { font-size: 1.1rem; }
+  .card-content { padding: 16px; }
+  .card-subject { font-size: 1rem; }
+  .card-body { font-size: 0.82rem; }
+  .form-inner { padding: 20px 16px; }
+  .modal { padding: 20px 16px; width: 100%; }
+  .modal-overlay { padding: 8px; }
+  .mod-analytics-grid { grid-template-columns: 1fr; }
+  .profile-card { padding: 24px 16px; }
+  .pub-profile-card { padding: 24px 16px; }
+  nav#main-nav { width: 240px; right: -240px; }
 }
 </style>
 </head>
@@ -1015,6 +1152,9 @@ header.scrolled .header-inner { padding: 10px 16px; }
 <header id="header">
 <div class="header-inner">
 <div class="logo" onclick="switchView('browse')">Review<em>Board</em></div>
+<button class="mobile-menu-btn" id="mobile-menu-btn" onclick="toggleMobileMenu()" aria-label="Menu">
+<span></span><span></span><span></span>
+</button>
 <nav id="main-nav">
 <button data-view="browse" class="active">Browse</button>
 <button data-view="write">Write</button>
@@ -1424,7 +1564,7 @@ Respond with this exact JSON structure:
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + openaiApiKey },
       body: JSON.stringify({
-        model: 'gpt-5',
+        model: 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.1,
         max_tokens: 200,
@@ -2037,7 +2177,36 @@ function renderAuthArea() {
 /* ============================================ */
 /* VIEW SWITCHING                               */
 /* ============================================ */
+/* Mobile menu */
+function toggleMobileMenu() {
+  const btn = document.getElementById('mobile-menu-btn');
+  const nav = document.getElementById('main-nav');
+  let overlay = document.getElementById('mobile-nav-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'mobile-nav-overlay';
+    overlay.className = 'mobile-nav-overlay';
+    overlay.onclick = toggleMobileMenu;
+    document.body.appendChild(overlay);
+  }
+  const isOpen = nav.classList.toggle('open');
+  btn.classList.toggle('open', isOpen);
+  overlay.classList.toggle('show', isOpen);
+  document.body.style.overflow = isOpen ? 'hidden' : '';
+}
+
+function closeMobileMenu() {
+  const btn = document.getElementById('mobile-menu-btn');
+  const nav = document.getElementById('main-nav');
+  const overlay = document.getElementById('mobile-nav-overlay');
+  if (nav) nav.classList.remove('open');
+  if (btn) btn.classList.remove('open');
+  if (overlay) overlay.classList.remove('show');
+  document.body.style.overflow = '';
+}
+
 function switchView(viewName) {
+  closeMobileMenu();
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('#main-nav button').forEach(b => b.classList.remove('active'));
   const viewEl = document.getElementById(viewName + '-view');
@@ -2953,7 +3122,7 @@ function renderModSettingsTab(tabContent) {
   tabContent.innerHTML = `
     <div class="mod-settings-section">
       <h4>AI Moderation (OpenAI)</h4>
-      <div style="font-size:0.68rem;color:var(--text-dim);margin-bottom:10px;">Uses GPT-5 to evaluate every review for spam, quality, and interest. Without an API key, a basic heuristic fallback is used instead.</div>
+      <div style="font-size:0.68rem;color:var(--text-dim);margin-bottom:10px;">Uses GPT-4o-mini to evaluate every review for spam, quality, and interest. Without an API key, a basic heuristic fallback is used instead.</div>
       <div class="form-group"><label>OpenAI API Key</label><input type="password" id="openai-key-input" value="${esc(openaiApiKey)}" placeholder="sk-..."></div>
       <div class="mod-edit-row" style="align-items:center;gap:12px;margin-top:8px;">
         <button class="save-btn" onclick="saveOpenAIKey()">Save Key</button>
@@ -3016,10 +3185,10 @@ async function testOpenAIKey() {
   const key = document.getElementById('openai-key-input').value.trim();
   if (!key) { showToast('Enter an API key first', true); return; }
   try {
-    const res = await fetch('https://api.openai.com/v1/models/gpt-5', {
+    const res = await fetch('https://api.openai.com/v1/models/gpt-4o-mini', {
       headers: { 'Authorization': 'Bearer ' + key },
     });
-    if (res.ok) showToast('Connection successful — GPT-5 is accessible');
+    if (res.ok) showToast('Connection successful — GPT-4o-mini is accessible');
     else if (res.status === 401) showToast('Invalid API key', true);
     else showToast('API error: ' + res.status, true);
   } catch(e) { showToast('Connection failed: ' + e.message, true); }
